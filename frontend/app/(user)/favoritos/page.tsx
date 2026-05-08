@@ -76,7 +76,7 @@ export default function FavoritosPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {favoriteContent.map((content) => (
                   <div key={content.id} className="relative group">
-                    <ContentCard content={content} />
+                    <ContentCard contenido={content} />
                     <Button
                       variant="destructive"
                       size="icon"
@@ -99,7 +99,7 @@ export default function FavoritosPage() {
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold text-foreground">{content.titulo}</h3>
                       <p className="text-sm text-muted-foreground mt-1">
-                        {content.categoria} • {content.año} • {content.clasificacion}
+                        {content.categoria} • {content.año} • {content.clasificacion_edad}
                       </p>
                     </div>
                     <Button
