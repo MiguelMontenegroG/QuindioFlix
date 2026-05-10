@@ -196,33 +196,33 @@ export function MainNav({
 
                   {/* Menu Items */}
                   <DropdownMenuItem asChild>
-                    <Link href="/cuenta" className="cursor-pointer">
+                    <Link href="/mi-cuenta" className="cursor-pointer">
                       <User className="h-4 w-4 mr-2" />
                       Mi cuenta
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/mi-lista" className="cursor-pointer">
+                    <Link href="/mi-cuenta/perfiles" className="cursor-pointer">
                       <Heart className="h-4 w-4 mr-2" />
-                      Mi lista
+                  Mis perfiles
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/historial" className="cursor-pointer">
+                    <Link href="/mi-cuenta/historial" className="cursor-pointer">
                       <History className="h-4 w-4 mr-2" />
                       Historial
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/cuenta/pagos" className="cursor-pointer">
+                    <Link href="/mi-cuenta/pagos" className="cursor-pointer">
                       <CreditCard className="h-4 w-4 mr-2" />
                       Pagos
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/cuenta/configuracion" className="cursor-pointer">
+                    <Link href="/mi-cuenta" className="cursor-pointer">
                       <Settings className="h-4 w-4 mr-2" />
-                      Configuración
+                      Configuracion
                     </Link>
                   </DropdownMenuItem>
 

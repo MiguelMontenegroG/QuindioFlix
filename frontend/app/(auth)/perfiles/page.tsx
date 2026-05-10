@@ -8,24 +8,25 @@ import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { mockPerfiles, mockPlanes, mockUsuario } from '@/lib/mock-data'
+import { useAuth } from '@/components/providers/auth-provider'
+
+
+import { PLANES } from '@/lib/constants'
 import type { Perfil } from '@/lib/types'
 
 export default function PerfilesPage() {
   const router = useRouter()
+  const { perfiles, usuario, setPerfilActivo, isAuthenticated } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
-  const [perfiles] = useState<Perfil[]>(mockPerfiles)
 
-  const plan = mockPlanes.find((p) => p.id === mockUsuario.id_plan)
-  const puedeCrearPerfil = perfiles.length < (plan?.max_perfiles || 2)
+  const plan = Object.values(PLANES).find((p) => p.id === usuario?.id_plan)
+  const puedeCrearPerfil = perfiles.length < (plan?.maxPerfiles || 2)
 
   const handleSelectPerfil = (perfil: Perfil) => {
     if (isEditing) {
       router.push(`/perfiles/editar/${perfil.id}`)
     } else {
-      // Guardar perfil activo en localStorage (en producción usar contexto/estado global)
-      localStorage.setItem('perfilActivo', JSON.stringify(perfil))
-      router.push('/inicio')
+      setPerfilActivo(perfil)
     }
   }
 
@@ -151,10 +152,10 @@ export default function PerfilesPage() {
 
       {/* Footer */}
       <footer className="p-6 flex justify-center">
-        <Link href="/cuenta">
+        <Link href="/mi-cuenta">
           <Button variant="ghost" className="text-muted-foreground hover:text-foreground gap-2">
             <Settings className="h-4 w-4" />
-            Configuración de cuenta
+            Configuracion de cuenta
           </Button>
         </Link>
       </footer>

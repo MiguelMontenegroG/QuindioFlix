@@ -34,8 +34,10 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Error de conexión' }))
-    throw new Error(error.message || `Error ${response.status}`)
+    const errorBody = await response.json().catch(() => ({}))
+    // FastAPI devuelve "detail", otros backends "message"
+    const mensaje = errorBody.detail || errorBody.message || errorBody.error || `Error ${response.status}`
+    throw new Error(mensaje)
   }
 
   return response.json()
@@ -75,24 +77,58 @@ export const authAPI = {
 }
 
 // ==================== PERFILES ====================
+
+// Funciones de mapeo entre backend (id_perfil, nombre_perfil, tipo=ADULTO|INFANTIL)
+// y frontend (id, nombre, es_infantil)
+function mapBackendPerfilToFrontend(bp: any): Perfil {
+  return {
+    id: bp.id_perfil ?? bp.id,
+    id_usuario: bp.id_usuario,
+    nombre: bp.nombre_perfil ?? bp.nombre,
+    avatar: bp.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(bp.nombre_perfil || bp.nombre || 'U')}`,
+    es_infantil: bp.tipo === 'INFANTIL',
+    pin: bp.pin,
+  }
+}
+
+function mapFrontendPerfilToBackend(p: { nombre: string; es_infantil: boolean; id_usuario: number; avatar?: string }) {
+  return {
+    id_usuario: p.id_usuario,
+    nombre_perfil: p.nombre,
+    avatar: p.avatar || 'default.png',
+    tipo: p.es_infantil ? 'INFANTIL' : 'ADULTO',
+  }
+}
+
 export const perfilesAPI = {
-  obtenerPorUsuario: (idUsuario: number) =>
-    fetchAPI<Perfil[]>(`/usuarios/${idUsuario}/perfiles`),
+  obtenerPorUsuario: async (idUsuario: number) => {
+    const data = await fetchAPI<any[]>(`/usuarios/${idUsuario}/perfiles`)
+    return data.map(mapBackendPerfilToFrontend)
+  },
 
-  crear: (data: { id_usuario: number; nombre: string; es_infantil: boolean; pin?: string }) =>
-    fetchAPI<Perfil>('/perfiles', {
+  crear: async (data: { id_usuario: number; nombre: string; es_infantil: boolean; avatar?: string }) => {
+    const backendData = mapFrontendPerfilToBackend(data)
+    const result = await fetchAPI<any>('/usuarios/perfiles', {
       method: 'POST',
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify(backendData),
+    })
+    return mapBackendPerfilToFrontend(result)
+  },
 
-  actualizar: (id: number, data: Partial<Perfil>) =>
-    fetchAPI<Perfil>(`/perfiles/${id}`, {
+  actualizar: async (id: number, data: { nombre?: string; es_infantil?: boolean; avatar?: string }) => {
+    const backendData: any = {}
+    if (data.nombre !== undefined) backendData.nombre_perfil = data.nombre
+    if (data.avatar !== undefined) backendData.avatar = data.avatar
+    if (data.es_infantil !== undefined) backendData.tipo = data.es_infantil ? 'INFANTIL' : 'ADULTO'
+    const result = await fetchAPI<any>(`/usuarios/perfiles/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify(backendData),
+    })
+    return mapBackendPerfilToFrontend(result)
+  },
 
   eliminar: (id: number) =>
-    fetchAPI<{ mensaje: string }>(`/perfiles/${id}`, {
+    fetchAPI<{ mensaje: string }>(`/usuarios/perfiles/${id}`, {
       method: 'DELETE',
     }),
 }
@@ -221,25 +257,25 @@ export const reproduccionesAPI = {
     }),
 
   obtenerHistorial: (idPerfil: number) =>
-    fetchAPI<Reproduccion[]>(`/perfiles/${idPerfil}/reproducciones`),
+    fetchAPI<Reproduccion[]>(`/usuarios/${idPerfil}/reproducciones`),
 
   obtenerEnProgreso: (idPerfil: number) =>
-    fetchAPI<Reproduccion[]>(`/perfiles/${idPerfil}/reproducciones/en-progreso`),
+    fetchAPI<Reproduccion[]>(`/usuarios/${idPerfil}/reproducciones/en-progreso`),
 }
 
 // ==================== FAVORITOS ====================
 export const favoritosAPI = {
   obtenerPorPerfil: (idPerfil: number) =>
-    fetchAPI<Favorito[]>(`/perfiles/${idPerfil}/favoritos`),
+    fetchAPI<Favorito[]>(`/usuarios/${idPerfil}/favoritos`),
 
   agregar: (idPerfil: number, idContenido: number) =>
-    fetchAPI<Favorito>('/favoritos', {
+    fetchAPI<Favorito>('/usuarios/favoritos', {
       method: 'POST',
       body: JSON.stringify({ id_perfil: idPerfil, id_contenido: idContenido }),
     }),
 
   eliminar: (idPerfil: number, idContenido: number) =>
-    fetchAPI<{ mensaje: string }>(`/favoritos/${idPerfil}/${idContenido}`, {
+    fetchAPI<{ mensaje: string }>(`/usuarios/favoritos/${idPerfil}/${idContenido}`, {
       method: 'DELETE',
     }),
 }

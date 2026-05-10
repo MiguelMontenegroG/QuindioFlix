@@ -3,7 +3,34 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
 import { useRouter } from 'next/navigation'
 import { authAPI } from '@/lib/api'
-import type { Usuario, Perfil, SessionData } from '@/lib/types'
+import type { Usuario, Perfil } from '@/lib/types'
+
+// Funciones de mapeo backend -> frontend
+function mapUsuario(backendUser: any): Usuario {
+  return {
+    id: backendUser.id_usuario ?? backendUser.id,
+    nombre: backendUser.nombre,
+    email: backendUser.email,
+    telefono: backendUser.telefono,
+    ciudad: backendUser.ciudad,
+    fecha_nacimiento: backendUser.fecha_nacimiento,
+    id_plan: backendUser.id_plan,
+    estado: (backendUser.estado_cuenta || backendUser.estado || 'activo').toLowerCase() as 'activo' | 'inactivo',
+    codigo_referido: backendUser.codigo_referido,
+    fecha_registro: backendUser.fecha_registro,
+  }
+}
+
+function mapPerfil(backendPerfil: any): Perfil {
+  return {
+    id: backendPerfil.id_perfil ?? backendPerfil.id,
+    id_usuario: backendPerfil.id_usuario,
+    nombre: backendPerfil.nombre_perfil ?? backendPerfil.nombre,
+    avatar: backendPerfil.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(backendPerfil.nombre_perfil || backendPerfil.nombre || 'U')}`,
+    es_infantil: (backendPerfil.tipo === 'INFANTIL') || !!backendPerfil.es_infantil,
+    pin: backendPerfil.pin,
+  }
+}
 
 interface AuthContextType {
   usuario: Usuario | null
@@ -28,7 +55,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
-  // Cargar sesión desde localStorage al montar
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
     const storedUsuario = localStorage.getItem('usuario')
@@ -46,15 +72,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await authAPI.login(email, password)
-    
+
+    const usuarioMapeado = mapUsuario(response.usuario)
+    const perfilesMapeados = (response.perfiles || []).map(mapPerfil)
+
     setToken(response.token)
-    setUsuario(response.usuario)
-    setPerfiles(response.perfiles)
+    setUsuario(usuarioMapeado)
+    setPerfiles(perfilesMapeados)
 
     localStorage.setItem('token', response.token)
-    localStorage.setItem('usuario', JSON.stringify(response.usuario))
+    localStorage.setItem('usuario', JSON.stringify(usuarioMapeado))
 
-    // Redirigir a selección de perfiles
     router.push('/perfiles')
   }, [router])
 
@@ -80,10 +108,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshSession = useCallback(async () => {
     try {
       const response = await authAPI.verificarToken()
-      setUsuario(response.usuario)
-      setPerfiles(response.perfiles)
+      const usuarioMapeado = mapUsuario(response.usuario)
+      const perfilesMapeados = (response.perfiles || []).map(mapPerfil)
+      setUsuario(usuarioMapeado)
+      setPerfiles(perfilesMapeados)
+      localStorage.setItem('usuario', JSON.stringify(usuarioMapeado))
     } catch {
-      // Si el token expiró, cerrar sesión
       logout()
     }
   }, [logout])
@@ -116,7 +146,6 @@ export function useAuth() {
   return context
 }
 
-// Guard para proteger rutas que requieren autenticación
 export function useAuthGuard() {
   const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()

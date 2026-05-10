@@ -33,6 +33,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+backend/.env
+backend/.env.example
 
 # Vercel / v0
 .snowflake/

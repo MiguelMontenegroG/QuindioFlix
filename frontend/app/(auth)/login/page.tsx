@@ -10,9 +10,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
+import { useAuth } from '@/components/providers/auth-provider'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -30,20 +32,12 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      // Simulación de login - en producción conectar con FastAPI
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      
-      // Mock de validación
-      if (email === 'demo@quindioflix.com' && password === 'demo123') {
-        toast.success('Inicio de sesión exitoso')
-        router.push('/perfiles')
-      } else {
-        // Para demo, cualquier credencial funciona
-        toast.success('Bienvenido a QuindioFlix')
-        router.push('/perfiles')
-      }
-    } catch {
-      toast.error('Error al iniciar sesión. Verifica tus credenciales.')
+      await login(email, password)
+      toast.success('Inicio de sesion exitoso')
+      // login() ya redirige a /perfiles
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al iniciar sesion'
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }
@@ -168,10 +162,10 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Demo credentials */}
+          {/* Info */}
           <div className="mt-6 p-4 bg-secondary/30 rounded-lg">
             <p className="text-xs text-muted-foreground text-center">
-              <strong>Demo:</strong> Usa cualquier correo y contraseña para probar
+              Inicia sesion con tu correo y contrasena registrados
             </p>
           </div>
         </div>
