@@ -18,6 +18,8 @@ function mapUsuario(backendUser: any): Usuario {
     estado: (backendUser.estado_cuenta || backendUser.estado || 'activo').toLowerCase() as 'activo' | 'inactivo',
     codigo_referido: backendUser.codigo_referido,
     fecha_registro: backendUser.fecha_registro,
+    es_admin: backendUser.es_admin === true || backendUser.es_admin === 'S',
+    rol_oracle: backendUser.rol_oracle,
   }
 }
 

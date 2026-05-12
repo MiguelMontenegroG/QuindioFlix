@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   BarChart3,
@@ -10,40 +11,71 @@ import {
   Database,
   TrendingUp,
   Activity,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { analiticaAPI } from '@/lib/api';
 
 export default function AdminDashboard() {
+  const [kpisData, setKpisData] = useState({
+    usuarios_activos: 0,
+    ingresos_mensuales: 0,
+    reportes_pendientes: 0,
+    contenido_total: 0,
+  })
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function cargarKPIs() {
+      try {
+        const data = await analiticaAPI.obtenerKPIs()
+        if (data) {
+          setKpisData({
+            usuarios_activos: data.usuarios_activos || 0,
+            ingresos_mensuales: data.ingresos_mensuales || data.ingresos_mes || 0,
+            reportes_pendientes: data.reportes_pendientes || 0,
+            contenido_total: data.contenido_total || 0,
+          })
+        }
+      } catch {
+        console.warn('API no disponible, usando valores por defecto')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    cargarKPIs()
+  }, [])
+
   const adminModules = [
     {
       icon: BarChart3,
-      title: 'Reportes y Analítica',
+      title: 'Reportes y Analitica',
       description: 'Dashboards con PIVOT, ROLLUP, CUBE y vistas materializadas',
-      href: '/reportes',
+      href: '/admin/reportes',
       color: 'text-blue-500',
       bg: 'bg-blue-500/20',
     },
     {
       icon: AlertCircle,
-      title: 'Panel de Moderación',
+      title: 'Panel de Moderacion',
       description: 'Revisa y resuelve reportes de contenido inapropiado',
-      href: '/moderacion',
+      href: '/admin/moderacion',
       color: 'text-yellow-500',
       bg: 'bg-yellow-500/20',
     },
     {
       icon: FileText,
-      title: 'Gestión de Catálogo',
+      title: 'Gestion de Catalogo',
       description: 'CRUD de contenido, temporadas y episodios',
-      href: '/catalogo',
+      href: '/admin/catalogo',
       color: 'text-purple-500',
       bg: 'bg-purple-500/20',
     },
     {
       icon: Users,
-      title: 'Gestión de Usuarios',
+      title: 'Gestion de Usuarios',
       description: 'Administra usuarios, planes y suscripciones',
-      href: '/usuarios',
+      href: '/admin/usuarios',
       color: 'text-green-500',
       bg: 'bg-green-500/20',
     },
@@ -51,26 +83,34 @@ export default function AdminDashboard() {
       icon: Activity,
       title: 'Monitor de Transacciones',
       description: 'Estado de transacciones activas y concurrencia',
-      href: '/transacciones',
+      href: '/admin/transacciones',
       color: 'text-pink-500',
       bg: 'bg-pink-500/20',
     },
     {
       icon: Database,
       title: 'Herramientas DBA',
-      description: 'Índices, vistas materializadas, fragmentación',
-      href: '/dba',
+      description: 'Indices, vistas materializadas, fragmentacion',
+      href: '/admin/dba',
       color: 'text-cyan-500',
       bg: 'bg-cyan-500/20',
     },
   ];
 
   const stats = [
-    { label: 'Usuarios activos', value: '24,580', icon: Users },
-    { label: 'Ingresos mensuales', value: '$245,980', icon: TrendingUp },
-    { label: 'Reportes pendientes', value: '12', icon: AlertCircle },
-    { label: 'Contenido en catálogo', value: '487', icon: FileText },
+    { label: 'Usuarios activos', value: kpisData.usuarios_activos.toLocaleString('es-CO'), icon: Users },
+    { label: 'Ingresos mensuales', value: `$${kpisData.ingresos_mensuales.toLocaleString('es-CO')}`, icon: TrendingUp },
+    { label: 'Reportes pendientes', value: kpisData.reportes_pendientes.toString(), icon: AlertCircle },
+    { label: 'Contenido en catalogo', value: kpisData.contenido_total.toString(), icon: FileText },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background pt-24 pb-12 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
@@ -78,11 +118,11 @@ export default function AdminDashboard() {
         {/* Welcome */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">
-            Panel de Administración
+            Panel de Administracion
           </h1>
           <p className="text-muted-foreground">
             Bienvenido al centro de control de QuindioFlix. Gestiona usuarios, contenido, reportes
-            y analítica.
+            y analitica.
           </p>
         </div>
 

@@ -22,9 +22,24 @@ def registro(data: UsuarioCreate):
         return RegistroResponse(usuario=usuario, mensaje="Registro exitoso. Bienvenido a QuindioFlix!")
     except Exception as e:
         error_msg = str(e)
-        if "UK" in error_msg or "UNIQUE" in error_msg or "uq_usu_email" in error_msg:
+        # Errores conocidos de Oracle -> mensajes amigables
+        if "ORA-20001" in error_msg or "EMAIL_DUPLICADO" in error_msg or "ya está registrado" in error_msg:
+            raise HTTPException(status_code=409, detail="El email ingresado ya esta registrado. Intenta con otro correo.")
+        if "ORA-20006" in error_msg or "PLAN_NO_EXISTE" in error_msg or "plan no existe" in error_msg:
+            raise HTTPException(status_code=400, detail="El plan seleccionado no es valido. Selecciona otro plan.")
+        if "ORA-20005" in error_msg or "PARAMETRO_INVALIDO" in error_msg or "obligatorios deben tener valor" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="Faltan datos obligatorios. Asegurate de llenar todos los campos requeridos (nombre, email, contrasena, plan)."
+            )
+        if "ORA-02290" in error_msg or "CK_USU_FNAC" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de nacimiento no es valida. Verifica que sea una fecha real."
+            )
+        if "UK" in error_msg or "UNIQUE" in error_msg or "uq_usu_email" in error_msg.lower():
             raise HTTPException(status_code=409, detail="El email ya esta registrado")
-        raise HTTPException(status_code=400, detail=error_msg)
+        raise HTTPException(status_code=400, detail=f"Error al registrar: {error_msg}")
 
 
 @router.post("/login", response_model=LoginResponse)

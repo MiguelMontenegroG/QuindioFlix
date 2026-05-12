@@ -340,7 +340,7 @@ export const usuariosAPI = {
         if (value !== undefined) searchParams.append(key, String(value))
       })
     }
-    return fetchAPI<{ data: Usuario[]; total: number }>(`/usuarios?${searchParams}`)
+    return fetchAPI<{ data: Usuario[]; total: number }>(`/usuarios/lista?${searchParams}`)
   },
 
   cambiarEstado: (id: number, estado: 'activo' | 'inactivo') =>
@@ -352,19 +352,19 @@ export const usuariosAPI = {
 
 // ==================== PLANES ====================
 export const planesAPI = {
-  obtenerTodos: () => fetchAPI<Plan[]>('/planes'),
+  obtenerTodos: () => fetchAPI<Plan[]>('/pagos/planes'),
 
-  obtenerPorId: (id: number) => fetchAPI<Plan>(`/planes/${id}`),
+  obtenerPorId: (id: number) => fetchAPI<Plan>(`/pagos/planes/${id}`),
 
   cambiarPlan: (idUsuario: number, idPlanNuevo: number) =>
-    fetchAPI<{ mensaje: string; usuario: Usuario }>('/planes/cambiar', {
+    fetchAPI<{ mensaje: string; usuario: Usuario }>('/pagos/cambiar-plan', {
       method: 'POST',
       body: JSON.stringify({ id_usuario: idUsuario, id_plan: idPlanNuevo }),
     }),
 
   // Para admin
   actualizar: (id: number, data: Partial<Plan>) =>
-    fetchAPI<Plan>(`/planes/${id}`, {
+    fetchAPI<Plan>(`/admin/planes/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
@@ -411,25 +411,25 @@ export const empleadosAPI = {
         if (value !== undefined) searchParams.append(key, String(value))
       })
     }
-    return fetchAPI<{ data: Empleado[]; total: number }>(`/empleados?${searchParams}`)
+    return fetchAPI<{ data: Empleado[]; total: number }>(`/admin/empleados?${searchParams}`)
   },
 
-  obtenerPorId: (id: number) => fetchAPI<Empleado>(`/empleados/${id}`),
+  obtenerPorId: (id: number) => fetchAPI<Empleado>(`/admin/empleados/${id}`),
 
   crear: (data: Omit<Empleado, 'id'>) =>
-    fetchAPI<Empleado>('/empleados', {
+    fetchAPI<Empleado>('/admin/empleados', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   actualizar: (id: number, data: Partial<Empleado>) =>
-    fetchAPI<Empleado>(`/empleados/${id}`, {
+    fetchAPI<Empleado>(`/admin/empleados/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
   eliminar: (id: number) =>
-    fetchAPI<{ mensaje: string }>(`/empleados/${id}`, {
+    fetchAPI<{ mensaje: string }>(`/admin/empleados/${id}`, {
       method: 'DELETE',
     }),
 }

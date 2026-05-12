@@ -1,27 +1,48 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Search,
   Eye,
   RotateCcw,
-  Filter,
   DollarSign,
-  TrendingUp,
   AlertCircle,
   CheckCircle,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mockPagos, mockUsuario } from '@/lib/mock-data'
-import type { Pago, EstadoPago } from '@/lib/types'
+import { toast } from 'sonner'
+import { pagosAPI } from '@/lib/api'
+import type { Pago } from '@/lib/types'
 
 export default function PagosAdminPage() {
-  const [pagos, setPagos] = useState<Pago[]>(mockPagos)
+  const [pagos, setPagos] = useState<Pago[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('todos')
   const [detallePago, setDetallePago] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const cargarPagos = async () => {
+    setIsLoading(true)
+    try {
+      const response = await pagosAPI.obtenerTodos()
+      if (response?.data) {
+        setPagos(response.data)
+      }
+    } catch {
+      console.warn('API no disponible')
+      const { mockPagos } = await import('@/lib/mock-data')
+      setPagos(mockPagos as Pago[])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    cargarPagos()
+  }, [])
 
   const filteredPagos = pagos.filter((pago) => {
     const matchesSearch = pago.referencia?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -29,18 +50,19 @@ export default function PagosAdminPage() {
     return matchesSearch && matchesStatus
   })
 
-  const handleReembolso = (id: number) => {
-    if (confirm('¿Estás seguro de reembolsar este pago?')) {
-      setPagos(
-        pagos.map((p) =>
-          p.id === id ? { ...p, estado: 'reembolsado' as EstadoPago } : p
-        )
-      )
+  const handleReembolso = async (id: number) => {
+    if (!confirm('Estas seguro de reembolsar este pago?')) return
+    try {
+      await pagosAPI.actualizarEstado(id, 'reembolsado')
+      toast.success('Pago reembolsado correctamente')
+      cargarPagos()
+    } catch {
+      toast.error('Error al reembolsar el pago')
     }
   }
 
   const stats = {
-    total: pagos.reduce((sum, p) => sum + p.monto, 0),
+    total: pagos.reduce((sum, p) => sum + Number(p.monto), 0),
     exitosos: pagos.filter((p) => p.estado === 'exitoso').length,
     fallidos: pagos.filter((p) => p.estado === 'fallido').length,
     reembolsados: pagos.filter((p) => p.estado === 'reembolsado').length,
@@ -143,56 +165,61 @@ export default function PagosAdminPage() {
             <thead>
               <tr className="border-b border-border">
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Referencia</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Usuario</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Monto</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Método</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Metodo</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Estado</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {filteredPagos.map((pago) => (
-                <tr key={pago.id} className="border-b border-border hover:bg-card/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs text-accent font-semibold">
-                    {pago.referencia}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-foreground">{mockUsuario.nombre}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-foreground">
-                    ${pago.monto.toLocaleString('es-CO')}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {new Date(pago.fecha).toLocaleDateString('es-CO')}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {getMethodLabel(pago.metodo)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <Badge className={getStatusBadge(pago.estado)}>
-                      {pago.estado}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDetallePago(detallePago === pago.id ? null : pago.id)}
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                    {pago.estado === 'exitoso' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleReembolso(pago.id)}
-                        title="Reembolsar"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </Button>
-                    )}
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-accent mx-auto" />
                   </td>
                 </tr>
-              ))}
+              ) : filteredPagos.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                    No se encontraron pagos
+                  </td>
+                </tr>
+              ) : (
+                filteredPagos.map((pago) => (
+                  <tr key={pago.id} className="border-b border-border hover:bg-card/50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs text-accent font-semibold">
+                      {pago.referencia || `PAG-${pago.id}`}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-semibold text-foreground">
+                      ${Number(pago.monto).toLocaleString('es-CO')}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {pago.fecha ? new Date(pago.fecha).toLocaleDateString('es-CO') : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {getMethodLabel(pago.metodo)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge className={getStatusBadge(pago.estado)}>
+                        {pago.estado}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4 flex gap-2">
+                      {pago.estado === 'exitoso' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleReembolso(pago.id)}
+                          title="Reembolsar"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -1,8 +1,9 @@
-﻿"""Routers de pagos y planes."""
+"""Routers de pagos y planes."""
 
 from fastapi import APIRouter, HTTPException
 
 from database import get_connection, release_connection
+
 from schemas.usuario import CambiarPlanRequest, Plan, Usuario
 from schemas.pago import Pago, PagoCreate, PagoUpdateEstado
 from services.plan_service import (
@@ -91,7 +92,7 @@ def obtener_pagos_usuario(id_usuario: int):
     return pagos_por_usuario(id_usuario)
 
 
-@router.post("")
+@router.post("", response_model=Pago, status_code=201)
 def crear_pago(data: PagoCreate):
     """Registra un nuevo pago."""
     try:
@@ -105,6 +106,7 @@ def actualizar_estado_pago(id_pago: int, data: PagoUpdateEstado):
     """Actualiza el estado de un pago."""
     conn = None
     try:
+        from database import get_connection, release_connection
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(

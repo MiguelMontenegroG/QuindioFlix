@@ -15,6 +15,7 @@ import {
   Heart,
   History,
   CreditCard,
+  Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from './logo'
@@ -40,9 +41,9 @@ interface MainNavProps {
 const navLinks = [
   { href: '/inicio', label: 'Inicio' },
   { href: '/series', label: 'Series' },
-  { href: '/peliculas', label: 'Películas' },
+  { href: '/peliculas', label: 'Peliculas' },
   { href: '/documentales', label: 'Documentales' },
-  { href: '/musica', label: 'Música' },
+  { href: '/musica', label: 'Musica' },
   { href: '/podcasts', label: 'Podcasts' },
   { href: '/mi-lista', label: 'Mi Lista' },
 ]
@@ -69,12 +70,10 @@ export function MainNav({
     <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-background/95 via-background/80 to-transparent backdrop-blur-sm">
       <nav className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
-          {/* Logo */}
           <Link href="/inicio" className="shrink-0">
             <Logo size="md" />
           </Link>
 
-          {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-1">
             {navLinks.map((link) => (
               <Link
@@ -92,15 +91,13 @@ export function MainNav({
             ))}
           </div>
 
-          {/* Right Section */}
           <div className="flex items-center gap-2">
-            {/* Search */}
             <div className="relative">
               {isSearchOpen ? (
                 <form onSubmit={handleSearch} className="flex items-center">
                   <Input
                     type="search"
-                    placeholder="Buscar títulos..."
+                    placeholder="Buscar titulos..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-48 md:w-64 h-9 bg-secondary/80 border-border"
@@ -131,7 +128,6 @@ export function MainNav({
               )}
             </div>
 
-            {/* Notifications */}
             <Button
               variant="ghost"
               size="icon"
@@ -140,7 +136,6 @@ export function MainNav({
               <Bell className="h-5 w-5" />
             </Button>
 
-            {/* Profile Dropdown */}
             {perfil && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -161,7 +156,6 @@ export function MainNav({
                   align="end"
                   className="w-56 bg-card border-border"
                 >
-                  {/* Perfiles */}
                   {perfiles.length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
@@ -194,7 +188,6 @@ export function MainNav({
                     </>
                   )}
 
-                  {/* Menu Items */}
                   <DropdownMenuItem asChild>
                     <Link href="/mi-cuenta" className="cursor-pointer">
                       <User className="h-4 w-4 mr-2" />
@@ -204,7 +197,7 @@ export function MainNav({
                   <DropdownMenuItem asChild>
                     <Link href="/mi-cuenta/perfiles" className="cursor-pointer">
                       <Heart className="h-4 w-4 mr-2" />
-                  Mis perfiles
+                      Mis perfiles
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -228,18 +221,26 @@ export function MainNav({
 
                   <DropdownMenuSeparator />
 
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin" className="cursor-pointer">
+                      <Shield className="h-4 w-4 mr-2" />
+                      Panel Admin
+                    </Link>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
                   <DropdownMenuItem
                     onClick={onLogout}
                     className="cursor-pointer text-destructive focus:text-destructive"
                   >
                     <LogOut className="h-4 w-4 mr-2" />
-                    Cerrar sesión
+                    Cerrar sesion
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
 
-            {/* Mobile Menu Toggle */}
             <Button
               variant="ghost"
               size="icon"
@@ -255,7 +256,6 @@ export function MainNav({
           </div>
         </div>
 
-        {/* Mobile Navigation */}
         {isMobileMenuOpen && (
           <div className="lg:hidden mt-4 pb-4 border-t border-border pt-4">
             <div className="flex flex-col gap-1">

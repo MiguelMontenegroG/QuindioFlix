@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, Loader2, Check } from 'lucide-react'
@@ -11,14 +11,60 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { mockPlanes } from '@/lib/mock-data'
+import { authAPI, planesAPI } from '@/lib/api'
+import type { Plan } from '@/lib/types'
 
 export default function RegistroPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  
+  const [planes, setPlanes] = useState<Plan[]>([])
+  const [loadingPlanes, setLoadingPlanes] = useState(true)
+
+  useEffect(() => {
+    cargarPlanes()
+  }, [])
+
+  const cargarPlanes = async () => {
+    try {
+      const data = await planesAPI.obtenerTodos()
+      const planesMapeados: Plan[] = data.map((p: any) => ({
+        id: p.id_plan,
+        nombre: p.nombre_plan as Plan['nombre'],
+        precio: p.precio_mensual,
+        max_pantallas: p.num_pantallas,
+        calidad: mapearCalidad(p.calidad_video),
+        max_perfiles: p.max_perfiles,
+        descripcion: obtenerDescripcionPlan(p.nombre_plan, p.precio_mensual, p.calidad_video),
+      }))
+      setPlanes(planesMapeados)
+    } catch (error) {
+      console.error('Error al cargar planes:', error)
+      toast.error('Error al cargar los planes. Recarga la pagina.')
+    } finally {
+      setLoadingPlanes(false)
+    }
+  }
+
+  const mapearCalidad = (calidad: string): Plan['calidad'] => {
+    switch (calidad) {
+      case 'SD': return 'HD'
+      case 'HD': return 'Full HD'
+      case '4K': return '4K'
+      default: return 'HD'
+    }
+  }
+
+  const obtenerDescripcionPlan = (nombre: string, precio: number, calidad: string): string => {
+    const descripciones: Record<string, string> = {
+      'Basico': 'Ideal para una persona. Contenido en SD.',
+      'Estandar': 'Perfecto para parejas. Contenido en HD.',
+      'Premium': 'Para toda la familia. Contenido en 4K Ultra HD.',
+    }
+    return descripciones[nombre] || 'Plan ' + nombre + ' - $' + precio.toLocaleString('es-CO') + '/mes'
+  }
+
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
@@ -67,13 +113,22 @@ export default function RegistroPage() {
     setIsLoading(true)
 
     try {
-      // Simulación de registro - en producción conectar con FastAPI
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      
-      toast.success('¡Cuenta creada exitosamente!')
+      const response = await authAPI.registro({
+        nombre: formData.nombre,
+        email: formData.email,
+        password: formData.password,
+        telefono: formData.telefono || '',
+        ciudad: formData.ciudad || '',
+        fecha_nacimiento: formData.fecha_nacimiento || '',
+        id_plan: formData.id_plan,
+        codigo_referido: formData.codigo_referido || '',
+      })
+
+      toast.success(response.mensaje || 'Cuenta creada exitosamente!')
       router.push('/login')
-    } catch {
-      toast.error('Error al crear la cuenta. Intenta nuevamente.')
+    } catch (error: any) {
+      const mensaje = error.message || 'Error al crear la cuenta. Intenta nuevamente.'
+      toast.error(mensaje)
     } finally {
       setIsLoading(false)
     }
@@ -255,12 +310,18 @@ export default function RegistroPage() {
 
             {step === 2 && (
               <div className="space-y-6">
+                {loadingPlanes ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <span className="ml-3 text-muted-foreground">Cargando planes...</span>
+                  </div>
+                ) : (
                 <RadioGroup
                   value={String(formData.id_plan)}
                   onValueChange={(value) => updateFormData('id_plan', parseInt(value))}
                   className="space-y-4"
                 >
-                  {mockPlanes.map((plan) => (
+                  {planes.map((plan) => (
                     <label
                       key={plan.id}
                       className={cn(
@@ -300,6 +361,7 @@ export default function RegistroPage() {
                     </label>
                   ))}
                 </RadioGroup>
+                )}
 
                 <div className="flex gap-4">
                   <Button
@@ -308,12 +370,12 @@ export default function RegistroPage() {
                     onClick={() => setStep(1)}
                     className="flex-1 h-12"
                   >
-                    Atrás
+                    Atras
                   </Button>
                   <Button
                     type="submit"
                     className="flex-1 h-12 bg-primary hover:bg-primary/90 font-semibold"
-                    disabled={isLoading}
+                    disabled={isLoading || loadingPlanes}
                   >
                     {isLoading ? (
                       <>

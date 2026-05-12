@@ -1,6 +1,6 @@
 """Servicio de autenticacion: registro, login, vericacion de tokens con Oracle."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 import oracledb
 
@@ -10,24 +10,44 @@ from schemas.usuario import UsuarioCreate, UsuarioLogin, Token, Usuario, Perfil
 
 
 def execute_sp_registrar_usuario(
-    conn, p_nombre, p_email, p_password, p_telefono, p_fecha_nacimiento,
+    conn, p_nombre, p_email, p_password_hash, p_telefono, p_fecha_nacimiento,
     p_ciudad, p_id_plan, p_codigo_referido
 ) -> int:
-    """Ejecuta SP_REGISTRAR_USUARIO y retorna el id_usuario generado."""
+    """Ejecuta SP_REGISTRAR_USUARIO y retorna el id_usuario generado.
+
+    El SP actual tiene 10 parametros (9 IN, 1 OUT):
+      1: p_nombre, 2: p_email, 3: p_password_hash, 4: p_telefono,
+      5: p_fnac, 6: p_ciudad, 7: p_id_plan, 8: p_id_referidor,
+      9: p_metodo_pago, 10: p_id_usuario (OUT)
+    """
     out_cursor = conn.cursor()
     try:
+        # Preparar el parametro OUT
+        out_id_usuario = out_cursor.var(int)
+
+        # Llamar al SP con los parametros en el ORDEN CORRECTO
+        # incluyendo p_password_hash como 3er parametro
         out_cursor.callproc(
             "SP_REGISTRAR_USUARIO",
             [
-                p_nombre, p_email, p_password, p_telefono,
-                p_fecha_nacimiento, p_ciudad, p_id_plan, p_codigo_referido
+                p_nombre,               # 1: p_nombre
+                p_email,                # 2: p_email
+                p_password_hash,        # 3: p_password_hash
+                p_telefono,             # 4: p_telefono
+                p_fecha_nacimiento,     # 5: p_fnac
+                p_ciudad,               # 6: p_ciudad
+                p_id_plan,              # 7: p_id_plan
+                p_codigo_referido,      # 8: p_id_referidor
+                'PSE',                  # 9: p_metodo_pago
+                out_id_usuario,         # 10: p_id_usuario (OUT)
             ]
         )
-        cursor = conn.cursor()
-        cursor.execute("SELECT seq_usuarios.CURRVAL FROM DUAL")
-        row = cursor.fetchone()
-        cursor.close()
-        return row[0] if row else None
+
+        # Obtener el ID del parametro OUT
+        # oracledb devuelve un entero directamente para OUT params
+        id_usuario = out_id_usuario.getvalue()
+
+        return id_usuario
     except Exception as e:
         conn.rollback()
         raise e
@@ -40,16 +60,36 @@ def registrar_usuario(data: UsuarioCreate) -> Usuario:
     conn = get_connection()
     try:
         hashed = hash_password(data.password)
+
+        # Asegurar valores por defecto para campos opcionales
+        # El SP de Oracle espera valores no nulos para telefono, fecha_nacimiento y ciudad
+        telefono = data.telefono if data.telefono and data.telefono.strip() else 'Sin telefono'
+        # Manejar fecha_nacimiento: puede ser None, string vacio, o un objeto date
+        fecha_nac_raw = data.fecha_nacimiento
+        if fecha_nac_raw is None:
+            fecha_nac = date(1900, 1, 1)
+        elif isinstance(fecha_nac_raw, str):
+            if not fecha_nac_raw.strip():
+                fecha_nac = date(1900, 1, 1)
+            else:
+                try:
+                    fecha_nac = datetime.strptime(fecha_nac_raw, '%Y-%m-%d').date()
+                except ValueError:
+                    fecha_nac = date(1900, 1, 1)
+        else:
+            fecha_nac = fecha_nac_raw
+        ciudad = data.ciudad if data.ciudad and data.ciudad.strip() else 'Sin ciudad'
+
         id_usuario = execute_sp_registrar_usuario(
             conn,
             data.nombre,
             data.email,
-            hashed,
-            data.telefono,
-            data.fecha_nacimiento,
-            data.ciudad,
+            hashed,              # p_password_hash
+            telefono,            # p_telefono (con fallback)
+            fecha_nac,           # p_fnac (con fallback)
+            ciudad,              # p_ciudad (con fallback)
             data.id_plan,
-            data.codigo_referido
+            data.codigo_referido  # p_id_referidor (opcional)
         )
         conn.commit()
 

@@ -11,10 +11,18 @@ from schemas.contenido import (
 )
 
 
+def _read_clob(val):
+    if val is None:
+        return None
+    if hasattr(val, 'read'):
+        return val.read()
+    return str(val)
+
+
 def _row_to_contenido(row) -> Contenido:
     return Contenido(
         id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
-        duracion=row[3], sinopsis=row[4], clasificacion_edad=row[5],
+        duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
         fecha_agregado=row[6], es_original=row[7],
         id_categoria=row[8], id_empleado_resp=row[9]
     )
@@ -67,7 +75,7 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
         cursor.execute(sql, binds)
         resultados = []
         for row in cursor:
-            resultados.append(_row_to_contenido(row))
+            resultados.append(_row_to_contenido(row[:10]))  # ultimo elemento es ROWNUM
 
         cursor.close()
         return resultados, total
@@ -241,7 +249,7 @@ def listar_temporadas(id_contenido: int) -> list[Temporada]:
                 temp.episodios.append(Episodio(
                     id_episodio=erow[0], id_temporada=erow[1],
                     numero_episodio=erow[2], titulo_episodio=erow[3],
-                    duracion=erow[4], sinopsis_ep=erow[5]
+                    duracion=erow[4], sinopsis_ep=_read_clob(erow[5])
                 ))
             cursor2.close()
             temporadas.append(temp)

@@ -147,3 +147,45 @@ def ejecutar_renovacion_mensual() -> dict:
         raise
     finally:
         release_connection(conn)
+
+
+def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
+    """Ejecuta una consulta SELECT directa y retorna columnas + filas.
+    Solo acepta SELECT como medida de seguridad."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM ({query})")
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f"SELECT * FROM ({query}) WHERE ROWNUM <= {limite}")
+        columns = [desc[0] for desc in cursor.description]
+        rows = []
+        for r in cursor:
+            row = {}
+            for i, col in enumerate(columns):
+                val = r[i]
+                # Convertir tipos Oracle a tipos Python serializables
+                if hasattr(val, 'isoformat'):  # datetime
+                    val = val.isoformat()
+                elif isinstance(val, (int, float)):
+                    val = float(val) if isinstance(val, float) else val
+                elif val is None:
+                    val = None
+                else:
+                    val = str(val)
+                row[col] = val
+            rows.append(row)
+
+        cursor.close()
+        return {
+            "columns": columns,
+            "rows": rows,
+            "total": total,
+            "limite": limite,
+            "mostrando": len(rows)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        release_connection(conn)

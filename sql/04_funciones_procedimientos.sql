@@ -168,26 +168,28 @@ END FN_CONTENIDO_RECOMENDADO;
 
 -- PROCEDIMIENTO 1: SP_REGISTRAR_USUARIO
 -- Parámetros:
---   p_nombre        IN  – nombre completo
---   p_email         IN  – email único
---   p_telefono      IN  – teléfono
---   p_fnac          IN  – fecha de nacimiento
---   p_ciudad        IN  – ciudad de residencia
---   p_id_plan       IN  – plan elegido (1=Básico, 2=Estándar, 3=Premium)
---   p_id_referidor  IN  – id del usuario que refirió (NULL si ninguno)
---   p_metodo_pago   IN  – metodo del primer pago
---   p_id_usuario    OUT – id generado para el nuevo usuario
+--   p_nombre         IN  – nombre completo
+--   p_email          IN  – email único
+--   p_password_hash  IN  – hash bcrypt de la contrasena
+--   p_telefono       IN  – teléfono
+--   p_fnac           IN  – fecha de nacimiento
+--   p_ciudad         IN  – ciudad de residencia
+--   p_id_plan        IN  – plan elegido (1=Básico, 2=Estándar, 3=Premium)
+--   p_id_referidor   IN  – id del usuario que refirió (NULL si ninguno)
+--   p_metodo_pago    IN  – metodo del primer pago
+--   p_id_usuario     OUT – id generado para el nuevo usuario
 
 CREATE OR REPLACE PROCEDURE SP_REGISTRAR_USUARIO (
-    p_nombre       IN  USUARIOS.nombre%TYPE,
-    p_email        IN  USUARIOS.email%TYPE,
-    p_telefono     IN  USUARIOS.telefono%TYPE,
-    p_fnac         IN  USUARIOS.fecha_nacimiento%TYPE,
-    p_ciudad       IN  USUARIOS.ciudad%TYPE,
-    p_id_plan      IN  USUARIOS.id_plan%TYPE,
-    p_id_referidor IN  USUARIOS.id_referidor%TYPE DEFAULT NULL,
-    p_metodo_pago  IN  PAGOS.metodo_pago%TYPE     DEFAULT 'PSE',
-    p_id_usuario   OUT USUARIOS.id_usuario%TYPE
+    p_nombre         IN  USUARIOS.nombre%TYPE,
+    p_email          IN  USUARIOS.email%TYPE,
+    p_password_hash  IN  USUARIOS.password_hash%TYPE,
+    p_telefono       IN  USUARIOS.telefono%TYPE,
+    p_fnac           IN  USUARIOS.fecha_nacimiento%TYPE,
+    p_ciudad         IN  USUARIOS.ciudad%TYPE,
+    p_id_plan        IN  USUARIOS.id_plan%TYPE,
+    p_id_referidor   IN  USUARIOS.id_referidor%TYPE DEFAULT NULL,
+    p_metodo_pago    IN  PAGOS.metodo_pago%TYPE     DEFAULT 'PSE',
+    p_id_usuario     OUT USUARIOS.id_usuario%TYPE
 ) IS
 
     v_email_existe  NUMBER;
@@ -201,8 +203,8 @@ BEGIN
     -- Validaciones previas
 
     -- 1. Parámetros obligatorios no nulos
-    IF p_nombre IS NULL OR p_email IS NULL OR p_telefono IS NULL
-       OR p_fnac IS NULL OR p_ciudad IS NULL THEN
+    IF p_nombre IS NULL OR p_email IS NULL OR p_password_hash IS NULL
+       OR p_telefono IS NULL OR p_fnac IS NULL OR p_ciudad IS NULL THEN
         RAISE_APPLICATION_ERROR(-20005,
             'SP_REGISTRAR_USUARIO: todos los campos obligatorios deben tener valor.');
     END IF;
@@ -244,13 +246,14 @@ BEGIN
     SELECT seq_usuarios.NEXTVAL INTO v_nuevo_id FROM DUAL;
 
     INSERT INTO USUARIOS (
-        id_usuario, nombre, email, telefono,
+        id_usuario, nombre, email, password_hash, telefono,
         fecha_nacimiento, ciudad, estado_cuenta,
         fecha_registro, id_plan, id_referidor
     ) VALUES (
         v_nuevo_id,
         TRIM(p_nombre),
         LOWER(TRIM(p_email)),
+        p_password_hash,
         p_telefono,
         p_fnac,
         TRIM(p_ciudad),
@@ -319,6 +322,7 @@ BEGIN
                 p_id_referidor,
                 SYSDATE,
                 ROUND(v_monto_ref * 0.85, 2),   -- 15 % descuento
+                p_metodo_pago,
                 'PENDIENTE',
                 ADD_MONTHS(v_prox_venc, 1)
             );

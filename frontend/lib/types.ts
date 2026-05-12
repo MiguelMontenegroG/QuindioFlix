@@ -32,7 +32,7 @@ export interface Plan {
 }
 
 // Tipos de contenido
-export type CategoriaContenido = 'película' | 'serie' | 'documental' | 'música' | 'podcast'
+export type CategoriaContenido = 'Pelicula' | 'Serie' | 'Documental' | 'Musica' | 'Podcast'
 export type ClasificacionEdad = 'TP' | '+7' | '+13' | '+16' | '+18'
 export type EstadoContenido = 'borrador' | 'publicado' | 'archivado'
 
@@ -180,11 +180,15 @@ export interface Referido {
 // Tipos para reportes analíticos
 export interface KPIsDashboard {
   usuarios_activos: number
-  ingresos_mes: number
-  reproducciones_totales: number
-  contenido_mas_popular: Contenido[]
-  crecimiento_usuarios: number
-  tasa_conversion: number
+  ingresos_mensuales?: number
+  ingresos_mes?: number
+  total_reproducciones?: number
+  reproducciones_totales?: number
+  contenido_total?: number
+  contenido_mas_popular?: Contenido[]
+  crecimiento_usuarios?: number
+  reportes_pendientes?: number
+  tasa_conversion?: number
 }
 
 export interface ConsumoPorCiudad {

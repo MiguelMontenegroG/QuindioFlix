@@ -1,16 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { Edit2, Save, X, DollarSign, Users, Monitor, Check, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Edit2, Save, X, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mockPlanes } from '@/lib/mock-data'
+import { toast } from 'sonner'
+import { planesAPI } from '@/lib/api'
 import type { Plan } from '@/lib/types'
 
 export default function PlanesAdminPage() {
-  const [planes, setPlanes] = useState<Plan[]>(mockPlanes)
+  const [planes, setPlanes] = useState<Plan[]>([])
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [editForm, setEditForm] = useState({
     nombre: '',
     precio: 0,
@@ -19,6 +22,26 @@ export default function PlanesAdminPage() {
     max_perfiles: 0,
     descripcion: '',
   })
+
+  const cargarPlanes = async () => {
+    setIsLoading(true)
+    try {
+      const data = await planesAPI.obtenerTodos()
+      if (Array.isArray(data)) {
+        setPlanes(data)
+      }
+    } catch {
+      console.warn('API no disponible, usando datos mock')
+      const { mockPlanes } = await import('@/lib/mock-data')
+      setPlanes(mockPlanes as Plan[])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    cargarPlanes()
+  }, [])
 
   const startEditing = (plan: Plan) => {
     setEditingId(plan.id)
@@ -32,15 +55,18 @@ export default function PlanesAdminPage() {
     })
   }
 
-  const saveEdit = (id: number) => {
-    setPlanes(
-      planes.map((p) =>
-        p.id === id
-          ? { ...p, ...editForm }
-          : p
-      )
-    )
-    setEditingId(null)
+  const saveEdit = async (id: number) => {
+    setIsSaving(true)
+    try {
+      await planesAPI.actualizar(id, editForm)
+      toast.success('Plan actualizado correctamente')
+      setEditingId(null)
+      cargarPlanes()
+    } catch {
+      toast.error('Error al actualizar el plan')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const cancelEdit = () => {
@@ -58,8 +84,12 @@ export default function PlanesAdminPage() {
           </p>
         </div>
 
-        {/* Planes Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {planes.map((plan) => (
             <div
               key={plan.id}
@@ -127,8 +157,8 @@ export default function PlanesAdminPage() {
                     />
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => saveEdit(plan.id)} className="gap-1">
-                      <Save className="w-3 h-3" />
+                    <Button size="sm" onClick={() => saveEdit(plan.id)} disabled={isSaving} className="gap-1">
+                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                       Guardar
                     </Button>
                     <Button size="sm" variant="outline" onClick={cancelEdit} className="gap-1">
@@ -186,8 +216,9 @@ export default function PlanesAdminPage() {
             </div>
           ))}
         </div>
+        )}
 
-        {/* Información de restricciones */}
+        {/* Informacion de restricciones */}
         <div className="bg-card border border-border rounded-lg p-6">
           <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-accent" />

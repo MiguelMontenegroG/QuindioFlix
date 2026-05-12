@@ -1,13 +1,14 @@
-"""Routers DBA: transacciones, EXPLAIN PLAN, vistas materializadas, tablespaces.
+"""Routers DBA: transacciones, EXPLAIN PLAN, SQL directo, vistas materializadas, tablespaces.
 Todos los endpoints requieren autenticacion de administrador.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 
 from dependencies import get_current_admin
 from services.dba_service import (
     transacciones_activas, explain_plan, vistas_materializadas,
     refrescar_vista, tablespaces, ejecutar_renovacion_mensual,
+    ejecutar_consulta_sql,
 )
 
 router = APIRouter(prefix="/dba", tags=["Herramientas DBA"], dependencies=[Depends(get_current_admin)])
@@ -26,6 +27,28 @@ def analizar_query(data: dict):
         raise HTTPException(status_code=400, detail="Se requiere una consulta SQL")
     resultado = explain_plan(data["query"])
     return {"query": data["query"], "plan": resultado}
+
+
+@router.post("/query")
+def consultar_sql(data: dict, limite: int = Query(100, ge=1, le=5000)):
+    """Ejecuta una consulta SQL SELECT directamente (SOLO LECTURA).
+
+    Permite hacer consultas ad-hoc para verificar datos en Oracle.
+    Solo acepta SELECT, no permite INSERT/UPDATE/DELETE.
+    El parametro 'query' debe ser una sentencia SELECT valida.
+    """
+    query = data.get("query", "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Se requiere una consulta SQL")
+
+    query_upper = query.upper().strip()
+    if not query_upper.startswith("SELECT"):
+        raise HTTPException(status_code=400, detail="Solo se permiten consultas SELECT")
+
+    resultado = ejecutar_consulta_sql(query, limite)
+    if "error" in resultado:
+        raise HTTPException(status_code=400, detail=resultado["error"])
+    return resultado
 
 
 @router.get("/vistas-materializadas")

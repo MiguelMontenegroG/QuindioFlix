@@ -1,28 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Search,
   Plus,
   Edit2,
   Trash2,
-  UserCog,
   Shield,
-  ChevronDown,
-  ChevronUp,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mockEmpleados } from '@/lib/mock-data'
+import { toast } from 'sonner'
+import { empleadosAPI } from '@/lib/api'
 import type { Empleado, Departamento, RolOracle } from '@/lib/types'
 
 export default function EmpleadosPage() {
+  const [empleados, setEmpleados] = useState<Empleado[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterDept, setFilterDept] = useState<string>('todos')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [expandido, setExpandido] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -32,7 +33,29 @@ export default function EmpleadosPage() {
     es_jefe_departamento: false,
   })
 
-  const filteredEmpleados = mockEmpleados.filter((emp) => {
+  const departamentos = ['Contenido', 'Soporte', 'Moderación', 'Administración']
+
+  const cargarEmpleados = async () => {
+    setIsLoading(true)
+    try {
+      const response = await empleadosAPI.obtenerTodos()
+      if (response?.data) {
+        setEmpleados(response.data)
+      }
+    } catch {
+      console.warn('API no disponible, usando datos mock')
+      const { mockEmpleados } = await import('@/lib/mock-data')
+      setEmpleados(mockEmpleados as Empleado[])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    cargarEmpleados()
+  }, [])
+
+  const filteredEmpleados = empleados.filter((emp) => {
     const matchesSearch =
       emp.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -40,20 +63,47 @@ export default function EmpleadosPage() {
     return matchesSearch && matchesDept
   })
 
-  const departamentos = ['Contenido', 'Soporte', 'Moderación', 'Administración']
-  const rolesOracle = [
-    { value: 'ROL_ADMIN', label: 'Administrador' },
-    { value: 'ROL_ANALISTA', label: 'Analista' },
-    { value: 'ROL_SOPORTE', label: 'Soporte' },
-    { value: 'ROL_CONTENIDO', label: 'Contenido' },
-  ]
-
-  const handleSubmit = () => {
-    if (formData.nombre && formData.email) {
-      toast(`${editingId ? 'Empleado actualizado' : 'Empleado creado'} exitosamente`)
+  const handleSubmit = async () => {
+    if (!formData.nombre || !formData.email) {
+      toast.error('Completa los campos obligatorios')
+      return
+    }
+    setIsSaving(true)
+    try {
+      const empleadoData = {
+        nombre: formData.nombre,
+        email: formData.email,
+        departamento: formData.departamento,
+        rol_oracle: (formData.rol_oracle || undefined) as RolOracle | undefined,
+        es_jefe_departamento: formData.es_jefe_departamento,
+        fecha_ingreso: new Date().toISOString().split('T')[0],
+      }
+      if (editingId) {
+        await empleadosAPI.actualizar(editingId, empleadoData)
+        toast.success('Empleado actualizado correctamente')
+      } else {
+        await empleadosAPI.crear(empleadoData as any)
+        toast.success('Empleado creado correctamente')
+      }
       setShowForm(false)
       setEditingId(null)
       setFormData({ nombre: '', email: '', departamento: 'Contenido', rol_oracle: '', es_jefe_departamento: false })
+      cargarEmpleados()
+    } catch {
+      toast.error('Error al guardar el empleado')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleEliminar = async (id: number) => {
+    if (!confirm('Estas seguro de eliminar este empleado?')) return
+    try {
+      await empleadosAPI.eliminar(id)
+      toast.success('Empleado eliminado')
+      cargarEmpleados()
+    } catch {
+      toast.error('Error al eliminar el empleado')
     }
   }
 
@@ -67,18 +117,26 @@ export default function EmpleadosPage() {
     return colors[dept] || 'bg-muted text-muted-foreground'
   }
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background pt-24 pb-12 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-foreground mb-2">Gestión de Empleados</h1>
+            <h1 className="text-4xl font-bold text-foreground mb-2">Gestion de Empleados</h1>
             <p className="text-muted-foreground">
               Administra el equipo de QuindioFlix, departamentos y roles Oracle
             </p>
           </div>
-          <Button onClick={() => setShowForm(true)} className="gap-2">
+          <Button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ nombre: '', email: '', departamento: 'Contenido', rol_oracle: '', es_jefe_departamento: false }) }} className="gap-2">
             <Plus className="w-4 h-4" />
             Nuevo empleado
           </Button>
@@ -88,13 +146,13 @@ export default function EmpleadosPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Total empleados</p>
-            <p className="text-3xl font-bold text-foreground">{mockEmpleados.length}</p>
+            <p className="text-3xl font-bold text-foreground">{empleados.length}</p>
           </div>
           {departamentos.map((dept) => (
             <div key={dept} className="bg-card border border-border rounded-lg p-6">
               <p className="text-sm text-muted-foreground mb-2">{dept}</p>
               <p className="text-3xl font-bold text-foreground">
-                {mockEmpleados.filter((e) => e.departamento === dept).length}
+                {empleados.filter((e) => e.departamento === dept).length}
               </p>
             </div>
           ))}
@@ -145,9 +203,10 @@ export default function EmpleadosPage() {
                   className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground"
                 >
                   <option value="">Sin asignar</option>
-                  {rolesOracle.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
+                  <option value="ROL_ADMIN">Administrador</option>
+                  <option value="ROL_ANALISTA">Analista</option>
+                  <option value="ROL_SOPORTE">Soporte</option>
+                  <option value="ROL_CONTENIDO">Contenido</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
@@ -164,8 +223,8 @@ export default function EmpleadosPage() {
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <Button onClick={handleSubmit}>
-                {editingId ? 'Guardar cambios' : 'Crear empleado'}
+              <Button onClick={handleSubmit} disabled={isSaving}>
+                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</> : (editingId ? 'Guardar cambios' : 'Crear empleado')}
               </Button>
               <Button variant="outline" onClick={() => { setShowForm(false); setEditingId(null) }}>
                 Cancelar
@@ -212,65 +271,73 @@ export default function EmpleadosPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredEmpleados.map((emp) => (
-                <tr key={emp.id} className="border-b border-border hover:bg-card/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="font-semibold text-foreground">{emp.nombre}</p>
-                      <p className="text-xs text-muted-foreground">{emp.email}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <Badge className={getDeptColor(emp.departamento)}>
-                      {emp.departamento}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4">
-                    {emp.rol_oracle ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/20 text-accent rounded text-xs font-semibold">
-                        <Shield className="w-3 h-3" />
-                        {emp.rol_oracle}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {emp.es_jefe_departamento ? (
-                      <span className="text-green-500 text-sm font-semibold">Si</span>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">No</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {new Date(emp.fecha_ingreso).toLocaleDateString('es-CO')}
-                  </td>
-                  <td className="px-6 py-4 flex gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => {
-                      setEditingId(emp.id)
-                      setFormData({
-                        nombre: emp.nombre,
-                        email: emp.email,
-                        departamento: emp.departamento,
-                        rol_oracle: emp.rol_oracle || '',
-                        es_jefe_departamento: emp.es_jefe_departamento,
-                      })
-                      setShowForm(true)
-                    }}>
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+              {filteredEmpleados.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                    No se encontraron empleados
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredEmpleados.map((emp) => (
+                  <tr key={emp.id} className="border-b border-border hover:bg-card/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-semibold text-foreground">{emp.nombre}</p>
+                        <p className="text-xs text-muted-foreground">{emp.email}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge className={getDeptColor(emp.departamento)}>
+                        {emp.departamento}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4">
+                      {emp.rol_oracle ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/20 text-accent rounded text-xs font-semibold">
+                          <Shield className="w-3 h-3" />
+                          {emp.rol_oracle}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {emp.es_jefe_departamento ? (
+                        <span className="text-green-500 text-sm font-semibold">Si</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">No</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {emp.fecha_ingreso ? new Date(emp.fecha_ingreso).toLocaleDateString('es-CO') : '-'}
+                    </td>
+                    <td className="px-6 py-4 flex gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => {
+                        setEditingId(emp.id)
+                        setFormData({
+                          nombre: emp.nombre,
+                          email: emp.email,
+                          departamento: emp.departamento,
+                          rol_oracle: emp.rol_oracle || '',
+                          es_jefe_departamento: emp.es_jefe_departamento,
+                        })
+                        setShowForm(true)
+                      }}>
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleEliminar(emp.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
         <p className="text-sm text-muted-foreground mt-4">
-          Mostrando {filteredEmpleados.length} de {mockEmpleados.length} empleados
+          Mostrando {filteredEmpleados.length} de {empleados.length} empleados
         </p>
       </div>
     </div>

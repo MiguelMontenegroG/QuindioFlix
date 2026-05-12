@@ -38,9 +38,9 @@ class Plan(PlanBase):
 class UsuarioBase(BaseModel):
     nombre: str = Field(..., max_length=100)
     email: EmailStr
-    telefono: str = Field(..., max_length=15)
-    fecha_nacimiento: date
-    ciudad: str = Field(..., max_length=80)
+    telefono: str = Field("", max_length=15)
+    fecha_nacimiento: Optional[date] = None
+    ciudad: str = Field("", max_length=80)
     id_plan: int
     codigo_referido: Optional[str] = None
 

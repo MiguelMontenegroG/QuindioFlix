@@ -3,14 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Settings, Pencil } from 'lucide-react'
+import { Plus, Settings, Pencil, Shield } from 'lucide-react'
 import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/providers/auth-provider'
-
-
 import { PLANES } from '@/lib/constants'
 import type { Perfil } from '@/lib/types'
 
@@ -45,13 +43,23 @@ export default function PerfilesPage() {
         <Link href="/">
           <Logo size="md" />
         </Link>
-        <Button
-          variant="ghost"
-          className="text-muted-foreground hover:text-foreground"
-          onClick={() => setIsEditing(!isEditing)}
-        >
-          {isEditing ? 'Listo' : 'Administrar perfiles'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {usuario?.es_admin && (
+            <Link href="/admin">
+              <Button variant="default" className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground">
+                <Shield className="h-4 w-4" />
+                Panel Admin
+              </Button>
+            </Link>
+          )}
+          <Button
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setIsEditing(!isEditing)}
+          >
+            {isEditing ? 'Listo' : 'Administrar perfiles'}
+          </Button>
+        </div>
       </header>
 
       {/* Main Content */}
@@ -145,7 +153,7 @@ export default function PerfilesPage() {
         {/* Plan info */}
         {plan && (
           <p className="mt-12 text-sm text-muted-foreground">
-            Plan {plan.nombre}: {perfiles.length} de {plan.max_perfiles} perfiles usados
+            Plan {plan.nombre}: {perfiles.length} de {plan.maxPerfiles} perfiles usados
           </p>
         )}
       </main>

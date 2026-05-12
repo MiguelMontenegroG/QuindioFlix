@@ -20,6 +20,78 @@ from services.reproduccion_service import (
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
 
+@router.get("/lista")
+def listar_usuarios(
+    estado: str | None = None,
+    plan: int | None = None,
+    ciudad: str | None = None,
+    pagina: int = 1,
+    por_pagina: int = 100,
+):
+    """Lista todos los usuarios (para admin/soporte)."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        where_parts = []
+        binds = {}
+
+        if estado:
+            where_parts.append("u.estado_cuenta = :estado")
+            binds["estado"] = estado
+        if plan:
+            where_parts.append("u.id_plan = :plan")
+            binds["plan"] = plan
+        if ciudad:
+            where_parts.append("u.ciudad = :ciudad")
+            binds["ciudad"] = ciudad
+
+        where = ""
+        if where_parts:
+            where = "WHERE " + " AND ".join(where_parts)
+
+        cursor.execute(f"SELECT COUNT(*) FROM USUARIOS u {where}", binds)
+        total = cursor.fetchone()[0]
+
+        offset = (pagina - 1) * por_pagina
+        cursor.execute(
+            f"""SELECT * FROM (
+                SELECT u.*, p.nombre_plan, ROWNUM rn
+                FROM USUARIOS u
+                LEFT JOIN PLANES p ON p.id_plan = u.id_plan
+                {where}
+                ORDER BY u.id_usuario
+            ) WHERE rn > :offset AND rn <= :limit""",
+            {**binds, "offset": offset, "limit": offset + por_pagina}
+        )
+
+        columns = [desc[0] for desc in cursor.description]
+        usuarios = []
+        for r in cursor:
+            row = dict(zip(columns, r))
+            usuarios.append({
+                "id": row["ID_USUARIO"],
+                "id_usuario": row["ID_USUARIO"],
+                "nombre": row["NOMBRE"],
+                "email": row["EMAIL"],
+                "telefono": row.get("TELEFONO"),
+                "ciudad": row.get("CIUDAD"),
+                "fecha_nacimiento": str(row["FECHA_NACIMIENTO"]) if row.get("FECHA_NACIMIENTO") else None,
+                "id_plan": row.get("ID_PLAN"),
+                "estado": (row["ESTADO_CUENTA"] or "").lower(),
+                "estado_cuenta": row.get("ESTADO_CUENTA"),
+                "fecha_registro": str(row["FECHA_REGISTRO"]) if row.get("FECHA_REGISTRO") else None,
+                "plan": {
+                    "id": row.get("ID_PLAN"),
+                    "nombre": row.get("NOMBRE_PLAN"),
+                } if row.get("NOMBRE_PLAN") else None,
+                "es_admin": row.get("ES_ADMIN") == "S",
+            })
+        cursor.close()
+        return {"data": usuarios, "total": total}
+    finally:
+        release_connection(conn)
+
+
 @router.get("/{id_usuario}", response_model=Usuario)
 def obtener(id_usuario: int):
     """Obtiene un usuario por ID."""
