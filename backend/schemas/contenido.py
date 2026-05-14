@@ -64,6 +64,8 @@ class Contenido(ContenidoBase):
     fecha_agregado: date
     categoria: Optional[Categoria] = None
     generos: list[Genero] = []
+    calificacion_promedio: Optional[float] = None
+    temporadas: list["Temporada"] = []
 
     class Config:
         from_attributes = True

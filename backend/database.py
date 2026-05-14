@@ -1,41 +1,60 @@
 """Pool de conexiones Oracle usando oracledb en modo thin."""
 
 import oracledb
-from config import settings
+from .config import settings
 
-pool: oracledb.ConnectionPool | None = None
+POOLS: dict[str, oracledb.ConnectionPool] = {}
+ROLE_USERS = {
+    "admin": (settings.DB_USER_ADMIN, settings.DB_PASS_ADMIN),
+    "analista": (settings.DB_USER_ANALISTA, settings.DB_PASS_ANALISTA),
+    "soporte": (settings.DB_USER_SOPORTE, settings.DB_PASS_SOPORTE),
+    "contenido": (settings.DB_USER_CONTENIDO, settings.DB_PASS_CONTENIDO),
+}
 
 
-def init_pool():
-    """Inicializa el pool de conexiones a Oracle."""
-    global pool
-    pool = oracledb.create_pool(
-        user=settings.DB_USER,
-        password=settings.DB_PASS,
+def _create_pool(role: str) -> oracledb.ConnectionPool:
+    """Crea un pool por rol si no existe."""
+    user, password = ROLE_USERS[role]
+    return oracledb.create_pool(
+        user=user,
+        password=password,
         dsn=settings.DB_DSN,
-        min=2,
-        max=10,
-        increment=1,
+        min=settings.POOL_MIN,
+        max=settings.POOL_MAX,
+        increment=settings.POOL_INC,
     )
-    return pool
 
 
-def get_connection():
-    """Obtiene una conexion del pool."""
-    if pool is None:
-        init_pool()
-    return pool.acquire()
+def init_pools() -> None:
+    """Inicializa pools para todos los roles configurados."""
+    for role in ROLE_USERS:
+        if role not in POOLS:
+            POOLS[role] = _create_pool(role)
 
 
-def release_connection(conn):
-    """Devuelve la conexion al pool."""
+def get_connection(role: str = "admin"):
+    """Obtiene una conexion del pool del rol especificado."""
+    if role not in POOLS:
+        POOLS[role] = _create_pool(role)
+    return POOLS[role].acquire()
+
+
+def release_connection(conn, role: str = "admin"):
+    """Devuelve la conexion al pool correspondiente."""
+    pool = POOLS.get(role)
     if pool and conn:
         pool.release(conn)
 
 
-def close_pool():
-    """Cierra todas las conexiones del pool."""
-    global pool
-    if pool:
+def close_pools() -> None:
+    """Cierra todas las conexiones de todos los pools."""
+    for pool in POOLS.values():
         pool.close()
-        pool = None
+    POOLS.clear()
+
+
+def fq(name: str) -> str:
+    """Devuelve el nombre con prefijo de esquema si aplica."""
+    if settings.DB_SCHEMA:
+        return f"{settings.DB_SCHEMA}.{name}"
+    return name

@@ -56,6 +56,11 @@ class CalificacionCreate(BaseModel):
     resenia: Optional[str] = None
 
 
+class CalificacionUpdate(BaseModel):
+    estrellas: int = Field(..., ge=1, le=5)
+    resenia: Optional[str] = None
+
+
 class Calificacion(BaseModel):
     id_calificacion: int
     id_perfil: int

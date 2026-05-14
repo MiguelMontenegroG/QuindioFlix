@@ -1,14 +1,16 @@
 """Routers de analitica: KPIs, PIVOT, ROLLUP, CUBE, reportes financieros."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 
-from services.analitica_service import (
+from backend.dependencies import require_roles
+
+from backend.services.analitica_service import (
     obtener_kpis, consumo_por_ciudad, reproducciones_por_dispositivo,
     reporte_financiero, contenido_popular, reporte_equipo,
     estadisticas_moderacion,
 )
 
-router = APIRouter(prefix="/reportes", tags=["Analitica"])
+router = APIRouter(prefix="/reportes", tags=["Analitica"], dependencies=[Depends(require_roles("analista"))])
 
 
 @router.get("/kpis")

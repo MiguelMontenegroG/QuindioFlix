@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, HTTPException
 
-from schemas.reproduccion import (
+from backend.schemas.reproduccion import (
     Reproduccion, ReproduccionCreate, ReproduccionUpdate,
 )
-from services.reproduccion_service import (
+from backend.services.reproduccion_service import (
     registrar_reproduccion, actualizar_avance,
     historial_reproducciones, reproducciones_en_progreso,
 )

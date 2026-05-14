@@ -4,14 +4,14 @@ Todos los endpoints requieren autenticacion de administrador.
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 
-from dependencies import get_current_admin
-from services.dba_service import (
+from backend.dependencies import require_roles
+from backend.services.dba_service import (
     transacciones_activas, explain_plan, vistas_materializadas,
     refrescar_vista, tablespaces, ejecutar_renovacion_mensual,
     ejecutar_consulta_sql,
 )
 
-router = APIRouter(prefix="/dba", tags=["Herramientas DBA"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(prefix="/dba", tags=["Herramientas DBA"], dependencies=[Depends(require_roles("admin"))])
 
 
 @router.get("/transacciones")

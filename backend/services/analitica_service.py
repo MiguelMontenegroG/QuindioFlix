@@ -1,7 +1,7 @@
 """Servicio de analitica: KPIs, PIVOT, ROLLUP, CUBE con Oracle."""
 
-from database import get_connection, release_connection
-from schemas.analitica import (
+from ..database import get_connection, release_connection, fq
+from ..schemas.analitica import (
     KPIsDashboard, ConsumoPorCiudad, ReproduccionesPorDispositivo,
     ReporteFinanciero, ContenidoPopular, ReporteEquipo, EstadisticasModeracion,
 )
@@ -9,16 +9,16 @@ from schemas.analitica import (
 
 def obtener_kpis() -> KPIsDashboard:
     """Obtiene los KPIs del dashboard principal."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
         # Usuarios activos
-        cursor.execute("SELECT COUNT(*) FROM USUARIOS WHERE estado_cuenta = 'ACTIVO'")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('USUARIOS')} WHERE estado_cuenta = 'ACTIVO'")
         usuarios_activos = cursor.fetchone()[0]
 
         # Ingresos del mes
         cursor.execute(
-            """SELECT NVL(SUM(monto), 0) FROM PAGOS
+            f"""SELECT NVL(SUM(monto), 0) FROM {fq('PAGOS')}
                WHERE EXTRACT(MONTH FROM fecha_pago) = EXTRACT(MONTH FROM SYSDATE)
                AND EXTRACT(YEAR FROM fecha_pago) = EXTRACT(YEAR FROM SYSDATE)
                AND estado_pago = 'EXITOSO'"""
@@ -26,14 +26,14 @@ def obtener_kpis() -> KPIsDashboard:
         ingresos_mes = float(cursor.fetchone()[0])
 
         # Reproducciones totales
-        cursor.execute("SELECT COUNT(*) FROM REPRODUCCIONES")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('REPRODUCCIONES')}")
         reproducciones_totales = cursor.fetchone()[0]
 
         # Contenido mas popular
         cursor.execute(
-            """SELECT c.id_contenido, c.titulo, COUNT(r.id_reproduccion) as total_rep
-               FROM CONTENIDO c
-               JOIN REPRODUCCIONES r ON r.id_contenido = c.id_contenido
+            f"""SELECT c.id_contenido, c.titulo, COUNT(r.id_reproduccion) as total_rep
+               FROM {fq('CONTENIDO')} c
+               JOIN {fq('REPRODUCCIONES')} r ON r.id_contenido = c.id_contenido
                GROUP BY c.id_contenido, c.titulo
                ORDER BY total_rep DESC FETCH FIRST 5 ROWS ONLY"""
         )
@@ -44,12 +44,12 @@ def obtener_kpis() -> KPIsDashboard:
 
         # Crecimiento de usuarios (porcentaje vs mes anterior)
         cursor.execute(
-            """WITH MES_ACTUAL AS (
-                SELECT COUNT(*) AS total FROM USUARIOS
+            f"""WITH MES_ACTUAL AS (
+                SELECT COUNT(*) AS total FROM {fq('USUARIOS')}
                 WHERE EXTRACT(MONTH FROM fecha_registro) = EXTRACT(MONTH FROM SYSDATE)
                 AND EXTRACT(YEAR FROM fecha_registro) = EXTRACT(YEAR FROM SYSDATE)
             ), MES_ANTERIOR AS (
-                SELECT COUNT(*) AS total FROM USUARIOS
+                SELECT COUNT(*) AS total FROM {fq('USUARIOS')}
                 WHERE EXTRACT(MONTH FROM fecha_registro) = EXTRACT(MONTH FROM ADD_MONTHS(SYSDATE, -1))
                 AND EXTRACT(YEAR FROM fecha_registro) = EXTRACT(YEAR FROM ADD_MONTHS(SYSDATE, -1))
             )
@@ -62,10 +62,10 @@ def obtener_kpis() -> KPIsDashboard:
 
         # Tasa de conversion (pagos exitosos / total intentos)
         cursor.execute(
-            """SELECT CASE WHEN COUNT(*) = 0 THEN 0
+            f"""SELECT CASE WHEN COUNT(*) = 0 THEN 0
                       ELSE ROUND(SUM(CASE WHEN estado_pago = 'EXITOSO' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2)
                       END
-               FROM PAGOS"""
+               FROM {fq('PAGOS')}"""
         )
         tasa_conversion = float(cursor.fetchone()[0])
 
@@ -80,20 +80,20 @@ def obtener_kpis() -> KPIsDashboard:
             tasa_conversion=tasa_conversion,
         )
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")
 
 
 def consumo_por_ciudad() -> list[dict]:
     """Ejecuta consulta con ROLLUP para agrupar por ciudad."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT NVL(u.ciudad, 'TOTAL') AS ciudad,
+            f"""SELECT NVL(u.ciudad, 'TOTAL') AS ciudad,
                       COUNT(u.id_usuario) AS total_usuarios,
                       NVL(SUM(p.monto), 0) AS ingresos_totales
-               FROM USUARIOS u
-               LEFT JOIN PAGOS p ON p.id_usuario = u.id_usuario
+               FROM {fq('USUARIOS')} u
+               LEFT JOIN {fq('PAGOS')} p ON p.id_usuario = u.id_usuario
                GROUP BY ROLLUP(u.ciudad)
                ORDER BY u.ciudad"""
         )
@@ -101,20 +101,20 @@ def consumo_por_ciudad() -> list[dict]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")
 
 
 def reproducciones_por_dispositivo() -> list[dict]:
     """Ejecuta consulta con PIVOT para cruzar categoria vs dispositivo."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT * FROM (
+            f"""SELECT * FROM (
                 SELECT cat.nombre_categoria, r.dispositivo, COUNT(*) AS total
-                FROM REPRODUCCIONES r
-                JOIN CONTENIDO c ON c.id_contenido = r.id_contenido
-                JOIN CATEGORIAS cat ON cat.id_categoria = c.id_categoria
+                FROM {fq('REPRODUCCIONES')} r
+                JOIN {fq('CONTENIDO')} c ON c.id_contenido = r.id_contenido
+                JOIN {fq('CATEGORIAS')} cat ON cat.id_categoria = c.id_categoria
                 GROUP BY cat.nombre_categoria, r.dispositivo
             ) PIVOT (
                 SUM(total) FOR dispositivo IN ('CELULAR' AS celular, 'TABLET' AS tablet, 'TV' AS tv, 'COMPUTADOR' AS computador)
@@ -126,12 +126,12 @@ def reproducciones_por_dispositivo() -> list[dict]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")
 
 
 def reporte_financiero(mes: str = None, anio: int = None) -> list[dict]:
     """Reporte financiero con CUBE por ciudad-plan-mes."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
         year_filter = f"AND EXTRACT(YEAR FROM p.fecha_pago) = {anio}" if anio else ""
@@ -143,35 +143,40 @@ def reporte_financiero(mes: str = None, anio: int = None) -> list[dict]:
                        NVL(TO_CHAR(p.fecha_pago, 'YYYY-MM'), 'TOTAL') AS mes,
                        NVL(SUM(p.monto), 0) AS ingresos,
                        COUNT(DISTINCT u.id_usuario) AS usuarios
-                FROM USUARIOS u
-                JOIN PLANES pl ON pl.id_plan = u.id_plan
-                LEFT JOIN PAGOS p ON p.id_usuario = u.id_usuario
+                FROM {fq('USUARIOS')} u
+                JOIN {fq('PLANES')} pl ON pl.id_plan = u.id_plan
+                LEFT JOIN {fq('PAGOS')} p ON p.id_usuario = u.id_usuario
                     AND p.estado_pago = 'EXITOSO'
                     {year_filter} {month_filter}
                 GROUP BY CUBE(u.ciudad, pl.nombre_plan, TO_CHAR(p.fecha_pago, 'YYYY-MM'))
                 ORDER BY u.ciudad, pl.nombre_plan, mes"""
         )
         columns = [desc[0] for desc in cursor.description]
-        rows = [dict(zip(columns, (float(v) if isinstance(v, (int, float)) and desc[0] == "INGRESOS" else v for v, desc in zip(r, cursor.description)))) for r in cursor]
+        rows = []
+        for r in cursor:
+            row = dict(zip(columns, r))
+            if row.get("INGRESOS") is not None:
+                row["INGRESOS"] = float(row["INGRESOS"])
+            rows.append(row)
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")
 
 
 def contenido_popular(limite: int = 10) -> list[ContenidoPopular]:
     """Obtiene el contenido mas popular por reproducciones."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT c.id_contenido, c.titulo,
+            f"""SELECT c.id_contenido, c.titulo,
                       COUNT(r.id_reproduccion) AS total_reproducciones,
                       ROUND(AVG(r.porcentaje_avance), 2) AS promedio_avance,
                       ROUND(AVG(cal.estrellas), 2) AS calificacion_promedio
-               FROM CONTENIDO c
-               LEFT JOIN REPRODUCCIONES r ON r.id_contenido = c.id_contenido
-               LEFT JOIN CALIFICACIONES cal ON cal.id_contenido = c.id_contenido
+               FROM {fq('CONTENIDO')} c
+               LEFT JOIN {fq('REPRODUCCIONES')} r ON r.id_contenido = c.id_contenido
+               LEFT JOIN {fq('CALIFICACIONES')} cal ON cal.id_contenido = c.id_contenido
                GROUP BY c.id_contenido, c.titulo
                ORDER BY total_reproducciones DESC
                FETCH FIRST :1 ROWS ONLY""", [limite]
@@ -184,21 +189,21 @@ def contenido_popular(limite: int = 10) -> list[ContenidoPopular]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")
 
 
 def reporte_equipo() -> list[ReporteEquipo]:
     """Reporte de empleados por departamento con jerarquia."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT d.nombre_depto,
+            f"""SELECT d.nombre_depto,
                       COUNT(e.id_empleado) AS total_empleados,
                       SUM(CASE WHEN e.id_supervisor IS NOT NULL THEN 1 ELSE 0 END) AS con_supervisor,
                       SUM(CASE WHEN e.id_supervisor IS NULL THEN 1 ELSE 0 END) AS sin_supervisor
-               FROM DEPARTAMENTOS d
-               LEFT JOIN EMPLEADOS e ON e.id_departamento = d.id_departamento
+               FROM {fq('DEPARTAMENTOS')} d
+               LEFT JOIN {fq('EMPLEADOS')} e ON e.id_departamento = d.id_departamento
                GROUP BY d.nombre_depto
                ORDER BY d.nombre_depto"""
         )
@@ -209,29 +214,29 @@ def reporte_equipo() -> list[ReporteEquipo]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")
 
 
 def estadisticas_moderacion() -> EstadisticasModeracion:
     """Estadisticas de moderacion de reportes."""
-    conn = get_connection()
+    conn = get_connection("analista")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM REPORTES")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('REPORTES')}")
         total = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM REPORTES WHERE estado_reporte = 'PENDIENTE'")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('REPORTES')} WHERE estado_reporte = 'PENDIENTE'")
         pendientes = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM REPORTES WHERE estado_reporte = 'RESUELTO'")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('REPORTES')} WHERE estado_reporte = 'RESUELTO'")
         resueltos = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM REPORTES WHERE estado_reporte = 'RECHAZADO'")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('REPORTES')} WHERE estado_reporte = 'RECHAZADO'")
         rechazados = cursor.fetchone()[0]
 
         cursor.execute(
-            """SELECT ROUND(AVG((fecha_resolucion - fecha_reporte) * 24), 2)
-               FROM REPORTES WHERE estado_reporte IN ('RESUELTO', 'RECHAZADO')
+            f"""SELECT ROUND(AVG((fecha_resolucion - fecha_reporte) * 24), 2)
+               FROM {fq('REPORTES')} WHERE estado_reporte IN ('RESUELTO', 'RECHAZADO')
                AND fecha_resolucion IS NOT NULL"""
         )
         tiempo_promedio = cursor.fetchone()[0]
@@ -244,4 +249,4 @@ def estadisticas_moderacion() -> EstadisticasModeracion:
             tiempo_promedio_resolucion_horas=float(tiempo_promedio) if tiempo_promedio else None
         )
     finally:
-        release_connection(conn)
+        release_connection(conn, "analista")

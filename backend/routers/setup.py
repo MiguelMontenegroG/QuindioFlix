@@ -1,10 +1,11 @@
 """Router de setup: creacion del administrador inicial."""
 
+import oracledb
 from fastapi import APIRouter, HTTPException
 
-from auth import hash_password
-from database import get_connection, release_connection
-from schemas.usuario import Usuario
+from backend.auth import hash_password
+from backend.database import get_connection, release_connection, fq
+from backend.oracle_errors import handle_oracle_error
 
 router = APIRouter(prefix="/setup", tags=["Setup"])
 
@@ -19,12 +20,12 @@ def crear_admin_inicial():
 
     Solo funciona si no hay ningun admin registrado aun.
     """
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
 
         # Verificar si ya existe un admin
-        cursor.execute("SELECT COUNT(*) FROM USUARIOS WHERE es_admin = 'S'")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('USUARIOS')} WHERE es_admin = 'S'")
         count = cursor.fetchone()[0]
 
         if count > 0:
@@ -32,40 +33,41 @@ def crear_admin_inicial():
             return {"mensaje": "Ya existe un administrador registrado"}
 
         # Verificar si ya existe el email
-        cursor.execute("SELECT COUNT(*) FROM USUARIOS WHERE email = 'admin@quindioflix.com'")
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('USUARIOS')} WHERE email = 'admin@quindioflix.com'")
         email_count = cursor.fetchone()[0]
 
         if email_count > 0:
             # Si el email existe pero no es admin, lo promovemos
-            cursor.execute("UPDATE USUARIOS SET es_admin = 'S' WHERE email = 'admin@quindioflix.com'")
+            cursor.execute(f"UPDATE {fq('USUARIOS')} SET es_admin = 'S' WHERE email = 'admin@quindioflix.com'")
             conn.commit()
             cursor.close()
             return {"mensaje": "Usuario existente promovido a administrador"}
 
-        # Crear admin
+        # Crear admin via SP
         hashed = hash_password("Admin123!")
-        cursor.execute(
-            """INSERT INTO USUARIOS (id_usuario, nombre, email, telefono,
-               fecha_nacimiento, ciudad, estado_cuenta, id_plan,
-               password_hash, es_admin)
-               VALUES (seq_usuarios.NEXTVAL, :1, :2, :3, :4, :5, 'ACTIVO', 1, :6, 'S')
-               RETURNING id_usuario INTO :7""",
+        out_id = cursor.var(int)
+        cursor.callproc(
+            f"{fq('SP_REGISTRAR_USUARIO_COMPLETO')}",
             [
                 "Administrador QuindioFlix",
                 "admin@quindioflix.com",
                 "3000000000",
                 "1990-01-01",
                 "Armenia",
-                hashed,
-                cursor.var(int),
+                1,
+                None,
+                "PSE",
+                out_id,
             ]
         )
-        id_usuario = cursor.fetchone()[0]
+        id_usuario = out_id.getvalue()
 
-        # Crear perfil admin
         cursor.execute(
-            """INSERT INTO PERFILES (id_perfil, id_usuario, nombre_perfil, avatar, tipo)
-               VALUES (seq_perfiles.NEXTVAL, :1, 'Admin', 'admin.png', 'ADULTO')""",
+            f"INSERT INTO {fq('USUARIOS_AUTH')} (id_usuario, password_hash) VALUES (:1, :2)",
+            [id_usuario, hashed]
+        )
+        cursor.execute(
+            f"UPDATE {fq('USUARIOS')} SET es_admin = 'S' WHERE id_usuario = :1",
             [id_usuario]
         )
 
@@ -78,8 +80,8 @@ def crear_admin_inicial():
             "password": "Admin123!",
             "id_usuario": id_usuario,
         }
-    except Exception as e:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")

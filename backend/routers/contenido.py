@@ -1,19 +1,22 @@
 """Routers de contenido: catalogo, busqueda, temporadas, episodios."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
-from schemas.contenido import (
+from ..dependencies import require_roles
+from ..schemas.contenido import (
     BusquedaParams, Contenido, ContenidoCreate, ContenidoUpdate,
     Temporada, TemporadaCreate, TemporadaUpdate,
     Episodio, EpisodioCreate, EpisodioUpdate,
     Categoria, Genero,
 )
-from services.contenido_service import (
+from ..schemas.reproduccion import Calificacion
+from ..services.contenido_service import (
     listar_contenido, obtener_contenido_por_id,
     crear_contenido, actualizar_contenido, eliminar_contenido,
     listar_temporadas, crear_temporada, crear_episodio,
-    listar_categorias, listar_generos,
+    listar_categorias, listar_generos, contenido_recomendado,
 )
+from ..services.reproduccion_service import calificaciones_por_contenido
 
 router = APIRouter(prefix="/contenido", tags=["Contenido"])
 
@@ -47,16 +50,13 @@ def obtener(id_contenido: int):
     return contenido
 
 
-@router.post("", response_model=Contenido, status_code=201)
+@router.post("", response_model=Contenido, status_code=201, dependencies=[Depends(require_roles("contenido"))])
 def crear(data: ContenidoCreate):
     """Crea un nuevo contenido en el catalogo."""
-    try:
-        return crear_contenido(data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return crear_contenido(data)
 
 
-@router.put("/{id_contenido}", response_model=Contenido)
+@router.put("/{id_contenido}", response_model=Contenido, dependencies=[Depends(require_roles("contenido"))])
 def actualizar(id_contenido: int, data: ContenidoUpdate):
     """Actualiza un contenido existente."""
     contenido = actualizar_contenido(id_contenido, data)
@@ -65,7 +65,7 @@ def actualizar(id_contenido: int, data: ContenidoUpdate):
     return contenido
 
 
-@router.delete("/{id_contenido}")
+@router.delete("/{id_contenido}", dependencies=[Depends(require_roles("contenido"))])
 def eliminar(id_contenido: int):
     """Elimina un contenido del catalogo."""
     if eliminar_contenido(id_contenido):
@@ -77,6 +77,19 @@ def eliminar(id_contenido: int):
 def obtener_temporadas(id_contenido: int):
     """Obtiene las temporadas de un contenido."""
     return listar_temporadas(id_contenido)
+
+
+@router.get("/{id_contenido}/calificaciones", response_model=list[Calificacion])
+def obtener_calificaciones(id_contenido: int, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100)):
+    """Obtiene calificaciones de un contenido."""
+    offset = (page - 1) * size
+    return calificaciones_por_contenido(id_contenido, offset=offset, limit=size)
+
+
+@router.get("/recomendado/{id_perfil}", response_model=Contenido | None)
+def recomendado(id_perfil: int):
+    """Obtiene el contenido recomendado para un perfil."""
+    return contenido_recomendado(id_perfil)
 
 
 # ==================== CATEGORIAS Y GENEROS ====================

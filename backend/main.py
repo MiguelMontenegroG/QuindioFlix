@@ -14,11 +14,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings
-from database import init_pool, close_pool
+from .config import settings
+from .database import init_pools, close_pools
 
 # Importar routers
-from routers import (
+from .routers import (
     auth,
     contenido,
     reproducciones,
@@ -29,6 +29,9 @@ from routers import (
     admin,
     dba,
     setup,
+    perfiles,
+    favoritos,
+    calificaciones,
 )
 
 
@@ -37,15 +40,15 @@ async def lifespan(app: FastAPI):
     """Maneja el ciclo de vida de la aplicacion."""
     # Startup: inicializar pool de conexiones Oracle
     try:
-        init_pool()
-        print(f"[{settings.APP_NAME}] Conectado a Oracle en {settings.DB_DSN}")
+        init_pools()
+        print(f"[{settings.APP_NAME}] Pools Oracle inicializados en {settings.DB_DSN}")
     except Exception as e:
         print(f"[{settings.APP_NAME}] WARNING: No se pudo conectar a Oracle: {e}")
         print(f"[{settings.APP_NAME}] La API iniciara sin base de datos. Configure backend/.env")
     yield
     # Shutdown: cerrar pool
     try:
-        close_pool()
+        close_pools()
         print(f"[{settings.APP_NAME}] Conexiones Oracle cerradas")
     except Exception:
         pass
@@ -72,6 +75,9 @@ app.include_router(auth.router)
 app.include_router(contenido.router)
 app.include_router(reproducciones.router)
 app.include_router(usuarios.router)
+app.include_router(perfiles.router)
+app.include_router(favoritos.router)
+app.include_router(calificaciones.router)
 app.include_router(pagos.router)
 app.include_router(reportes_mod.router)
 app.include_router(analitica.router)
@@ -95,7 +101,7 @@ def root():
 def health():
     """Health check que verifica conexion a Oracle."""
     try:
-        from database import get_connection, release_connection
+        from .database import get_connection, release_connection
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM DUAL")

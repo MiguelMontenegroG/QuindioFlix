@@ -1,11 +1,11 @@
 """Servicio DBA: EXPLAIN PLAN, tablespaces, vistas materializadas."""
 
-from database import get_connection, release_connection
+from ..database import get_connection, release_connection
 
 
 def transacciones_activas() -> list[dict]:
     """Obtiene transacciones activas y bloqueos."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -30,12 +30,12 @@ def transacciones_activas() -> list[dict]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 def explain_plan(query: str) -> list[dict]:
     """Ejecuta EXPLAIN PLAN para una consulta SQL."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         # Limpiar plan table
@@ -58,12 +58,12 @@ def explain_plan(query: str) -> list[dict]:
     except Exception as e:
         return [{"error": str(e)}]
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 def vistas_materializadas() -> list[dict]:
     """Obtiene informacion de vistas materializadas."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -80,12 +80,12 @@ def vistas_materializadas() -> list[dict]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 def refrescar_vista(nombre: str) -> dict:
     """Refresca una vista materializada."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(f"BEGIN DBMS_MVIEW.REFRESH('{nombre}', 'C'); END;")
@@ -95,12 +95,12 @@ def refrescar_vista(nombre: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 def tablespaces() -> list[dict]:
     """Obtiene informacion de tablespaces y uso."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -119,12 +119,12 @@ def tablespaces() -> list[dict]:
         cursor.close()
         return rows
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 def ejecutar_renovacion_mensual() -> dict:
     """Ejecuta el proceso de renovacion mensual de suscripciones."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         # Marcar usuarios como INACTIVO si su ultimo pago vencio hace mas de 30 dias
@@ -146,13 +146,13 @@ def ejecutar_renovacion_mensual() -> dict:
         conn.rollback()
         raise
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
     """Ejecuta una consulta SELECT directa y retorna columnas + filas.
     Solo acepta SELECT como medida de seguridad."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(f"SELECT COUNT(*) FROM ({query})")
@@ -188,4 +188,4 @@ def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
     except Exception as e:
         return {"error": str(e)}
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")

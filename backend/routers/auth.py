@@ -3,12 +3,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from auth import verify_token
-from schemas.usuario import (
+from ..auth import verify_token
+from ..database import get_connection, release_connection, fq
+from ..schemas.usuario import (
     UsuarioCreate, UsuarioLogin, LoginResponse, RegistroResponse,
     Usuario, Perfil,
 )
-from services.auth_service import registrar_usuario, autenticar_usuario, obtener_usuario_por_id
+from ..services.auth_service import registrar_usuario, autenticar_usuario, obtener_usuario_por_id
 
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 security = HTTPBearer()
@@ -17,29 +18,8 @@ security = HTTPBearer()
 @router.post("/registro", response_model=RegistroResponse)
 def registro(data: UsuarioCreate):
     """Registra un nuevo usuario en QuindioFlix."""
-    try:
-        usuario = registrar_usuario(data)
-        return RegistroResponse(usuario=usuario, mensaje="Registro exitoso. Bienvenido a QuindioFlix!")
-    except Exception as e:
-        error_msg = str(e)
-        # Errores conocidos de Oracle -> mensajes amigables
-        if "ORA-20001" in error_msg or "EMAIL_DUPLICADO" in error_msg or "ya está registrado" in error_msg:
-            raise HTTPException(status_code=409, detail="El email ingresado ya esta registrado. Intenta con otro correo.")
-        if "ORA-20006" in error_msg or "PLAN_NO_EXISTE" in error_msg or "plan no existe" in error_msg:
-            raise HTTPException(status_code=400, detail="El plan seleccionado no es valido. Selecciona otro plan.")
-        if "ORA-20005" in error_msg or "PARAMETRO_INVALIDO" in error_msg or "obligatorios deben tener valor" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail="Faltan datos obligatorios. Asegurate de llenar todos los campos requeridos (nombre, email, contrasena, plan)."
-            )
-        if "ORA-02290" in error_msg or "CK_USU_FNAC" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail="La fecha de nacimiento no es valida. Verifica que sea una fecha real."
-            )
-        if "UK" in error_msg or "UNIQUE" in error_msg or "uq_usu_email" in error_msg.lower():
-            raise HTTPException(status_code=409, detail="El email ya esta registrado")
-        raise HTTPException(status_code=400, detail=f"Error al registrar: {error_msg}")
+    usuario = registrar_usuario(data)
+    return RegistroResponse(usuario=usuario, mensaje="Registro exitoso. Bienvenido a QuindioFlix!")
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -55,6 +35,12 @@ def login(data: UsuarioLogin):
     )
 
 
+@router.post("/logout")
+def logout():
+    """Logout logico para JWT (sin estado)."""
+    return {"mensaje": "Sesion cerrada"}
+
+
 @router.get("/verificar")
 def verificar_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verifica que el token JWT sea valido y retorna usuario + perfiles."""
@@ -62,29 +48,25 @@ def verificar_token(credentials: HTTPAuthorizationCredentials = Depends(security
     if not payload:
         raise HTTPException(status_code=401, detail="Token invalido o expirado")
 
-    from services.auth_service import obtener_usuario_por_id
     usuario = obtener_usuario_por_id(int(payload["sub"]))
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    # Obtener perfiles del usuario
-    from database import get_connection, release_connection
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT id_perfil, id_usuario, nombre_perfil, avatar, tipo
-               FROM PERFILES WHERE id_usuario = :1""", [usuario.id_usuario]
+            f"""SELECT id_perfil, id_usuario, nombre_perfil, avatar, tipo
+               FROM {fq('PERFILES')} WHERE id_usuario = :1""", [usuario.id_usuario]
         )
-        perfiles = []
-        for r in cursor:
-            from schemas.usuario import Perfil
-            perfiles.append(Perfil(
+        perfiles = [
+            Perfil(
                 id_perfil=r[0], id_usuario=r[1],
                 nombre_perfil=r[2], avatar=r[3], tipo=r[4]
-            ))
+            ) for r in cursor
+        ]
         cursor.close()
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
     return {"usuario": usuario, "perfiles": perfiles}

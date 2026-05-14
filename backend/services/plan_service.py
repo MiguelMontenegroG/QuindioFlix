@@ -1,20 +1,21 @@
 """Servicio para gestion de planes y pagos (SP_CAMBIAR_PLAN, FN_CALCULAR_MONTO)."""
 
 from datetime import datetime
-from typing import Optional
+import oracledb
 
-from database import get_connection, release_connection
-from schemas.pago import Pago, PagoCreate
-from schemas.usuario import Plan, Usuario
+from ..database import get_connection, release_connection, fq
+from ..oracle_errors import handle_oracle_error
+from ..schemas.pago import Pago, PagoCreate
+from ..schemas.usuario import Plan, Usuario
 
 
 def listar_planes() -> list[Plan]:
     """Lista todos los planes disponibles."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id_plan, nombre_plan, precio_mensual, num_pantallas, calidad_video, max_perfiles FROM PLANES ORDER BY id_plan"
+            f"SELECT id_plan, nombre_plan, precio_mensual, num_pantallas, calidad_video, max_perfiles FROM {fq('PLANES')} ORDER BY id_plan"
         )
         planes = [Plan(
             id_plan=r[0], nombre_plan=r[1], precio_mensual=float(r[2]),
@@ -22,17 +23,19 @@ def listar_planes() -> list[Plan]:
         ) for r in cursor]
         cursor.close()
         return planes
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")
 
 
 def obtener_plan(id_plan: int) -> Plan | None:
     """Obtiene un plan por ID."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id_plan, nombre_plan, precio_mensual, num_pantallas, calidad_video, max_perfiles FROM PLANES WHERE id_plan = :1",
+            f"SELECT id_plan, nombre_plan, precio_mensual, num_pantallas, calidad_video, max_perfiles FROM {fq('PLANES')} WHERE id_plan = :1",
             [id_plan]
         )
         row = cursor.fetchone()
@@ -43,25 +46,26 @@ def obtener_plan(id_plan: int) -> Plan | None:
             id_plan=row[0], nombre_plan=row[1], precio_mensual=float(row[2]),
             num_pantallas=row[3], calidad_video=row[4], max_perfiles=row[5]
         )
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")
 
 
-def cambiar_plan(id_usuario: int, id_plan_nuevo: int) -> Usuario:
+def cambiar_plan(id_usuario: int, id_plan_nuevo: int, metodo_pago: str = "PSE") -> Usuario:
     """Ejecuta SP_CAMBIAR_PLAN para cambiar el plan de un usuario."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
-        cursor.callproc("SP_CAMBIAR_PLAN", [id_usuario, id_plan_nuevo])
+        cursor.callproc(f"{fq('SP_CAMBIAR_PLAN')}", [id_usuario, id_plan_nuevo, metodo_pago])
         conn.commit()
         cursor.close()
 
-        # Retornar usuario actualizado
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT id_usuario, nombre, email, telefono, ciudad,
+            f"""SELECT id_usuario, nombre, email, telefono, ciudad,
                       fecha_nacimiento, id_plan, estado_cuenta, fecha_registro
-               FROM USUARIOS WHERE id_usuario = :1""", [id_usuario]
+               FROM {fq('USUARIOS')} WHERE id_usuario = :1""", [id_usuario]
         )
         row = cursor.fetchone()
         cursor.close()
@@ -71,39 +75,40 @@ def cambiar_plan(id_usuario: int, id_plan_nuevo: int) -> Usuario:
             id_plan=row[6], estado_cuenta=row[7], fecha_registro=row[8],
             codigo_referido=None
         )
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")
 
 
 def calcular_monto(id_usuario: int) -> float:
     """Calcula el monto a pagar usando FN_CALCULAR_MONTO."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
-        monto_var = cursor.var(float)
-        cursor.execute("SELECT FN_CALCULAR_MONTO(:1) FROM DUAL", [id_usuario])
+        cursor.execute(f"SELECT {fq('FN_CALCULAR_MONTO')}(:1) FROM DUAL", [id_usuario])
         monto = cursor.fetchone()[0]
         cursor.close()
         return float(monto)
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")
 
 
 def registrar_pago(data: PagoCreate) -> Pago:
     """Registra un nuevo pago."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
         now = datetime.now()
         cursor.execute(
-            """INSERT INTO PAGOS (id_pago, id_usuario, fecha_pago, monto, metodo_pago, estado_pago, fecha_vencimiento)
-               VALUES (seq_pagos.NEXTVAL, :1, :2, :3, :4, 'EXITOSO', :5)
-               RETURNING id_pago, fecha_pago INTO :6, :7""",
+            f"""INSERT INTO {fq('PAGOS')} (id_pago, id_usuario, fecha_pago, monto, metodo_pago, estado_pago, fecha_vencimiento)
+               VALUES (seq_pagos.NEXTVAL, :1, :2, :3, :4, :5, :6)
+               RETURNING id_pago, fecha_pago INTO :7, :8""",
             [data.id_usuario, now, data.monto, data.metodo_pago,
-             data.fecha_vencimiento, cursor.var(int), cursor.var(str)]
+             data.estado_pago, data.fecha_vencimiento, cursor.var(int), cursor.var(str)]
         )
         id_pago, fecha_pago = cursor.fetchone()
         conn.commit()
@@ -112,24 +117,24 @@ def registrar_pago(data: PagoCreate) -> Pago:
         return Pago(
             id_pago=id_pago, id_usuario=data.id_usuario,
             fecha_pago=fecha_pago, monto=data.monto,
-            metodo_pago=data.metodo_pago, estado_pago="EXITOSO",
+            metodo_pago=data.metodo_pago, estado_pago=data.estado_pago,
             fecha_vencimiento=data.fecha_vencimiento
         )
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")
 
 
 def pagos_por_usuario(id_usuario: int) -> list[Pago]:
     """Obtiene el historial de pagos de un usuario."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT id_pago, id_usuario, fecha_pago, monto, metodo_pago, estado_pago, fecha_vencimiento
-               FROM PAGOS WHERE id_usuario = :1 ORDER BY fecha_pago DESC""",
+            f"""SELECT id_pago, id_usuario, fecha_pago, monto, metodo_pago, estado_pago, fecha_vencimiento
+               FROM {fq('PAGOS')} WHERE id_usuario = :1 ORDER BY fecha_pago DESC""",
             [id_usuario]
         )
         pagos = [Pago(
@@ -139,5 +144,7 @@ def pagos_por_usuario(id_usuario: int) -> list[Pago]:
         ) for r in cursor]
         cursor.close()
         return pagos
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")

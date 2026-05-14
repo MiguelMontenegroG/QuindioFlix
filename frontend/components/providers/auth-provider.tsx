@@ -6,7 +6,20 @@ import { authAPI } from '@/lib/api'
 import type { Usuario, Perfil } from '@/lib/types'
 
 // Funciones de mapeo backend -> frontend
-function mapUsuario(backendUser: any): Usuario {
+function mapUsuario(backendUser: any): {
+  id: any;
+  nombre: any;
+  email: any;
+  telefono: any;
+  ciudad: any;
+  fecha_nacimiento: any;
+  id_plan: any;
+  estado: "activo" | "inactivo";
+  codigo_referido: any;
+  fecha_registro: any;
+  es_admin: any;
+  rol_oracle: any
+} {
   return {
     id: backendUser.id_usuario ?? backendUser.id,
     nombre: backendUser.nombre,
@@ -18,7 +31,7 @@ function mapUsuario(backendUser: any): Usuario {
     estado: (backendUser.estado_cuenta || backendUser.estado || 'activo').toLowerCase() as 'activo' | 'inactivo',
     codigo_referido: backendUser.codigo_referido,
     fecha_registro: backendUser.fecha_registro,
-    es_admin: backendUser.es_admin === true || backendUser.es_admin === 'S',
+    es_admin: backendUser.es_admin || backendUser.es_admin === 'S',
     rol_oracle: backendUser.rol_oracle,
   }
 }
