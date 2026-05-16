@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Eye, Lock, Unlock, Trash2, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Search, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { toast } from 'sonner';
 import { usuariosAPI } from '@/lib/api';
 import type { Usuario } from '@/lib/types';
 
@@ -40,17 +38,6 @@ export default function UsuariosAdminPage() {
     return matchesSearch && matchesPlan;
   });
 
-  const toggleUsuario = async (id: number, estadoActual: string) => {
-    const esActivo = estadoActual === 'activo' || estadoActual === 'ACTIVO';
-    const nuevoEstado = esActivo ? 'INACTIVO' : 'ACTIVO';
-    try {
-      await usuariosAPI.cambiarEstado(id, nuevoEstado);
-      toast.success(`Usuario ${nuevoEstado === 'ACTIVO' ? 'activado' : 'desactivado'} correctamente`);
-      cargarUsuarios();
-    } catch {
-      toast.error('Error al cambiar estado del usuario');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
@@ -171,18 +158,7 @@ export default function UsuariosAdminPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleUsuario(usuario.id, usuario.estado)}
-                          title={usuario.estado === 'activo' || usuario.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
-                        >
-                          {(usuario.estado === 'activo' || usuario.estado === 'ACTIVO') ? (
-                            <Lock className="w-4 h-4" />
-                          ) : (
-                            <Unlock className="w-4 h-4" />
-                          )}
-                        </Button>
+                        <span className="text-xs text-muted-foreground">No disponible</span>
                       </td>
                     </tr>
                   ))

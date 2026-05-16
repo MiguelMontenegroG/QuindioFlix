@@ -7,9 +7,12 @@ export interface Usuario {
   ciudad?: string
   fecha_nacimiento?: string
   id_plan: number
-  estado: 'activo' | 'inactivo'
+  estado: 'activo' | 'inactivo' | 'ACTIVO' | 'INACTIVO'
   codigo_referido?: string
   fecha_registro: string
+  es_admin?: boolean
+  role?: 'admin' | 'analista' | 'soporte' | 'contenido' | 'usuario'
+  plan?: { id: number; nombre: string }
 }
 
 export interface Perfil {
@@ -92,6 +95,7 @@ export interface ContenidoRelacionado {
 // Tipos de reproducción y favoritos
 export interface Reproduccion {
   id: number
+  id_reproduccion?: number
   id_perfil: number
   id_contenido: number
   id_episodio?: number
@@ -153,18 +157,19 @@ export interface Pago {
 }
 
 // Tipos de empleados
-export type Departamento = 'Contenido' | 'Soporte' | 'Moderación' | 'Administración'
+export type Departamento = string
 export type RolOracle = 'ROL_ADMIN' | 'ROL_ANALISTA' | 'ROL_SOPORTE' | 'ROL_CONTENIDO'
 
 export interface Empleado {
   id: number
   nombre: string
   email: string
-  departamento: Departamento
-  rol_oracle?: RolOracle
-  id_supervisor?: number
-  es_jefe_departamento: boolean
-  fecha_ingreso: string
+  cargo?: string
+  fecha_contratacion?: string
+  id_departamento?: number
+  id_supervisor?: number | null
+  departamento?: string
+  supervisor?: string
 }
 
 // Tipos de referidos

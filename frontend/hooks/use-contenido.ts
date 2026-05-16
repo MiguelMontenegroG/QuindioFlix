@@ -113,7 +113,7 @@ export function useGeneros() {
     }
   }
 
-  return useSWR('/generos', () => generosAPI.obtenerTodos())
+  return useSWR('/contenido/generos/all', () => generosAPI.obtenerTodos())
 }
 
 // ============================================
@@ -137,7 +137,7 @@ export function useBusqueda(query: string) {
   }
 
   return useSWR(
-    query ? `/contenido/buscar?q=${query}` : null,
+    query ? `/contenido/buscar/all?q=${query}` : null,
     () => contenidoAPI.buscar(query)
   )
 }

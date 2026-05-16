@@ -6,15 +6,14 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Shield,
   Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { empleadosAPI } from '@/lib/api'
-import type { Empleado, Departamento, RolOracle } from '@/lib/types'
+import { empleadosAPI, departamentosAPI } from '@/lib/api'
+import type { Empleado } from '@/lib/types'
 
 export default function EmpleadosPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([])
@@ -24,16 +23,15 @@ export default function EmpleadosPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [departamentos, setDepartamentos] = useState<Array<{ id_departamento: number; nombre_depto: string }>>([])
 
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
-    departamento: 'Contenido' as Departamento,
-    rol_oracle: '' as RolOracle | '',
-    es_jefe_departamento: false,
+    cargo: '',
+    id_departamento: 0,
+    id_supervisor: null as number | null,
   })
-
-  const departamentos = ['Contenido', 'Soporte', 'Moderación', 'Administración']
 
   const cargarEmpleados = async () => {
     setIsLoading(true)
@@ -43,16 +41,32 @@ export default function EmpleadosPage() {
         setEmpleados(response.data)
       }
     } catch {
-      console.warn('API no disponible, usando datos mock')
-      const { mockEmpleados } = await import('@/lib/mock-data')
-      setEmpleados(mockEmpleados as Empleado[])
+      console.warn('API no disponible')
+      setEmpleados([])
     } finally {
       setIsLoading(false)
     }
   }
 
+  const cargarDepartamentos = async () => {
+    try {
+      const data = await departamentosAPI.obtenerTodos()
+      const normalizados = data.map((d: any) => ({
+        id_departamento: d.id_departamento ?? d.ID_DEPARTAMENTO,
+        nombre_depto: d.nombre_depto ?? d.NOMBRE_DEPTO,
+      }))
+      setDepartamentos(normalizados)
+      if (normalizados.length > 0 && formData.id_departamento === 0) {
+        setFormData((prev) => ({ ...prev, id_departamento: normalizados[0].id_departamento }))
+      }
+    } catch {
+      console.warn('No se pudieron cargar departamentos')
+    }
+  }
+
   useEffect(() => {
     cargarEmpleados()
+    cargarDepartamentos()
   }, [])
 
   const filteredEmpleados = empleados.filter((emp) => {
@@ -73,10 +87,10 @@ export default function EmpleadosPage() {
       const empleadoData = {
         nombre: formData.nombre,
         email: formData.email,
-        departamento: formData.departamento,
-        rol_oracle: (formData.rol_oracle || undefined) as RolOracle | undefined,
-        es_jefe_departamento: formData.es_jefe_departamento,
-        fecha_ingreso: new Date().toISOString().split('T')[0],
+        cargo: formData.cargo,
+        id_departamento: formData.id_departamento,
+        id_supervisor: formData.id_supervisor,
+        fecha_contratacion: new Date().toISOString().split('T')[0],
       }
       if (editingId) {
         await empleadosAPI.actualizar(editingId, empleadoData)
@@ -87,7 +101,7 @@ export default function EmpleadosPage() {
       }
       setShowForm(false)
       setEditingId(null)
-      setFormData({ nombre: '', email: '', departamento: 'Contenido', rol_oracle: '', es_jefe_departamento: false })
+      setFormData({ nombre: '', email: '', cargo: '', id_departamento: departamentos[0]?.id_departamento || 0, id_supervisor: null })
       cargarEmpleados()
     } catch {
       toast.error('Error al guardar el empleado')
@@ -136,7 +150,7 @@ export default function EmpleadosPage() {
               Administra el equipo de QuindioFlix, departamentos y roles Oracle
             </p>
           </div>
-          <Button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ nombre: '', email: '', departamento: 'Contenido', rol_oracle: '', es_jefe_departamento: false }) }} className="gap-2">
+          <Button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ nombre: '', email: '', cargo: '', id_departamento: departamentos[0]?.id_departamento || 0, id_supervisor: null }) }} className="gap-2">
             <Plus className="w-4 h-4" />
             Nuevo empleado
           </Button>
@@ -149,10 +163,10 @@ export default function EmpleadosPage() {
             <p className="text-3xl font-bold text-foreground">{empleados.length}</p>
           </div>
           {departamentos.map((dept) => (
-            <div key={dept} className="bg-card border border-border rounded-lg p-6">
-              <p className="text-sm text-muted-foreground mb-2">{dept}</p>
+            <div key={dept.id_departamento} className="bg-card border border-border rounded-lg p-6">
+              <p className="text-sm text-muted-foreground mb-2">{dept.nombre_depto}</p>
               <p className="text-3xl font-bold text-foreground">
-                {empleados.filter((e) => e.departamento === dept).length}
+                {empleados.filter((e) => e.departamento === dept.nombre_depto).length}
               </p>
             </div>
           ))}
@@ -184,42 +198,38 @@ export default function EmpleadosPage() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-semibold text-foreground mb-2">Cargo</label>
+                <Input
+                  type="text"
+                  placeholder="Cargo"
+                  value={formData.cargo}
+                  onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-semibold text-foreground mb-2">Departamento</label>
                 <select
-                  value={formData.departamento}
-                  onChange={(e) => setFormData({ ...formData, departamento: e.target.value as Departamento })}
+                  value={formData.id_departamento}
+                  onChange={(e) => setFormData({ ...formData, id_departamento: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground"
                 >
                   {departamentos.map((d) => (
-                    <option key={d} value={d}>{d}</option>
+                    <option key={d.id_departamento} value={d.id_departamento}>{d.nombre_depto}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">Rol Oracle</label>
+                <label className="block text-sm font-semibold text-foreground mb-2">Supervisor</label>
                 <select
-                  value={formData.rol_oracle}
-                  onChange={(e) => setFormData({ ...formData, rol_oracle: e.target.value as RolOracle })}
+                  value={formData.id_supervisor ?? ''}
+                  onChange={(e) => setFormData({ ...formData, id_supervisor: e.target.value ? Number(e.target.value) : null })}
                   className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground"
                 >
-                  <option value="">Sin asignar</option>
-                  <option value="ROL_ADMIN">Administrador</option>
-                  <option value="ROL_ANALISTA">Analista</option>
-                  <option value="ROL_SOPORTE">Soporte</option>
-                  <option value="ROL_CONTENIDO">Contenido</option>
+                  <option value="">Sin supervisor</option>
+                  {empleados.map((emp) => (
+                    <option key={emp.id} value={emp.id}>{emp.nombre}</option>
+                  ))}
                 </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="jefe"
-                  checked={formData.es_jefe_departamento}
-                  onChange={(e) => setFormData({ ...formData, es_jefe_departamento: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="jefe" className="text-sm text-foreground cursor-pointer">
-                  Es jefe de departamento
-                </label>
               </div>
             </div>
             <div className="flex gap-3 mt-6">
@@ -252,7 +262,7 @@ export default function EmpleadosPage() {
           >
             <option value="todos">Todos los departamentos</option>
             {departamentos.map((d) => (
-              <option key={d} value={d}>{d}</option>
+              <option key={d.id_departamento} value={d.nombre_depto}>{d.nombre_depto}</option>
             ))}
           </select>
         </div>
@@ -264,8 +274,8 @@ export default function EmpleadosPage() {
               <tr className="border-b border-border">
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Empleado</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Departamento</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Rol Oracle</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Jefe</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Cargo</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Supervisor</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Ingreso</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
               </tr>
@@ -287,29 +297,18 @@ export default function EmpleadosPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <Badge className={getDeptColor(emp.departamento)}>
-                        {emp.departamento}
+                      <Badge className={getDeptColor(emp.departamento || '')}>
+                        {emp.departamento || '-'}
                       </Badge>
                     </td>
                     <td className="px-6 py-4">
-                      {emp.rol_oracle ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/20 text-accent rounded text-xs font-semibold">
-                          <Shield className="w-3 h-3" />
-                          {emp.rol_oracle}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
+                      <span className="text-xs text-muted-foreground">{emp.cargo || '-'}</span>
                     </td>
                     <td className="px-6 py-4">
-                      {emp.es_jefe_departamento ? (
-                        <span className="text-green-500 text-sm font-semibold">Si</span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">No</span>
-                      )}
+                      <span className="text-xs text-muted-foreground">{emp.supervisor || '-'}</span>
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {emp.fecha_ingreso ? new Date(emp.fecha_ingreso).toLocaleDateString('es-CO') : '-'}
+                      {emp.fecha_contratacion ? new Date(emp.fecha_contratacion).toLocaleDateString('es-CO') : '-'}
                     </td>
                     <td className="px-6 py-4 flex gap-2">
                       <Button variant="ghost" size="icon" onClick={() => {
@@ -317,9 +316,9 @@ export default function EmpleadosPage() {
                         setFormData({
                           nombre: emp.nombre,
                           email: emp.email,
-                          departamento: emp.departamento,
-                          rol_oracle: emp.rol_oracle || '',
-                          es_jefe_departamento: emp.es_jefe_departamento,
+                          cargo: emp.cargo || '',
+                          id_departamento: emp.id_departamento || departamentos[0]?.id_departamento || 0,
+                          id_supervisor: emp.id_supervisor ?? null,
                         })
                         setShowForm(true)
                       }}>

@@ -43,18 +43,18 @@ export default function ReportesPage() {
       } catch {
         console.warn('API no disponible, usando datos por defecto')
         setCityData([
-          { ciudad: 'Medellin', basico: 450, estandar: 890, premium: 1200 },
-          { ciudad: 'Bogota', basico: 380, estandar: 920, premium: 1450 },
-          { ciudad: 'Cali', basico: 320, estandar: 710, premium: 980 },
-          { ciudad: 'Armenia', basico: 120, estandar: 345, premium: 560 },
+          { ciudad: 'Medellin', total_usuarios: 450, ingresos_totales: 1200000 },
+          { ciudad: 'Bogota', total_usuarios: 380, ingresos_totales: 1450000 },
+          { ciudad: 'Cali', total_usuarios: 320, ingresos_totales: 980000 },
+          { ciudad: 'Armenia', total_usuarios: 120, ingresos_totales: 560000 },
         ])
         setTopContent([
-          { titulo: 'Pelicula de ejemplo', reproducciones: 45680, calificacion_promedio: 4.8 },
+          { titulo: 'Pelicula de ejemplo', total_reproducciones: 45680, calificacion_promedio: 4.8 },
         ])
         setMonthlyRevenue([
-          { mes: 'Enero', total_ingresos: 185200 },
-          { mes: 'Febrero', total_ingresos: 192500 },
-          { mes: 'Marzo', total_ingresos: 205800 },
+          { mes: '2026-01', ingresos: 185200 },
+          { mes: '2026-02', ingresos: 192500 },
+          { mes: '2026-03', ingresos: 205800 },
         ])
       } finally {
         setIsLoading(false)
@@ -165,16 +165,14 @@ export default function ReportesPage() {
                   <thead>
                     <tr className="border-b border-border">
                       <th className="px-4 py-3 text-left font-semibold text-foreground">Ciudad</th>
-                      <th className="px-4 py-3 text-right font-semibold text-foreground">Basico</th>
-                      <th className="px-4 py-3 text-right font-semibold text-foreground">Estandar</th>
-                      <th className="px-4 py-3 text-right font-semibold text-foreground">Premium</th>
-                      <th className="px-4 py-3 text-right font-semibold text-accent">Total</th>
+                       <th className="px-4 py-3 text-right font-semibold text-foreground">Usuarios</th>
+                       <th className="px-4 py-3 text-right font-semibold text-accent">Ingresos</th>
                     </tr>
                   </thead>
                   <tbody>
                     {cityData.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
                           No hay datos disponibles
                         </td>
                       </tr>
@@ -182,11 +180,9 @@ export default function ReportesPage() {
                       cityData.map((row: any, i: number) => (
                         <tr key={i} className="border-b border-border hover:bg-card/50 transition-colors">
                           <td className="px-4 py-3 font-semibold text-foreground">{row.ciudad || row.city}</td>
-                          <td className="px-4 py-3 text-right text-muted-foreground">{row.basico || 0}</td>
-                          <td className="px-4 py-3 text-right text-muted-foreground">{row.estandar || 0}</td>
-                          <td className="px-4 py-3 text-right text-muted-foreground">{row.premium || 0}</td>
+                          <td className="px-4 py-3 text-right text-muted-foreground">{row.total_usuarios || 0}</td>
                           <td className="px-4 py-3 text-right font-semibold text-accent">
-                            {(row.basico || 0) + (row.estandar || 0) + (row.premium || 0)}
+                            {(row.ingresos_totales || 0).toLocaleString('es-CO')}
                           </td>
                         </tr>
                       ))
@@ -215,7 +211,7 @@ export default function ReportesPage() {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {content.reproducciones?.toLocaleString() || 0} reproducciones
+                          {content.total_reproducciones?.toLocaleString() || 0} reproducciones
                         </p>
                       </div>
                     ))
@@ -234,10 +230,10 @@ export default function ReportesPage() {
                       <div key={i} className="flex items-center justify-between">
                         <span className="text-sm text-foreground">{row.mes || row.month}</span>
                         <div className="flex-1 mx-4 h-2 bg-card/50 rounded-full overflow-hidden">
-                          <div className="h-full bg-accent rounded-full" style={{ width: `${Math.min((row.total_ingresos || row.revenue || 0) / 300000 * 100, 100)}%` }} />
+                          <div className="h-full bg-accent rounded-full" style={{ width: `${Math.min((row.ingresos || row.total_ingresos || row.revenue || 0) / 300000 * 100, 100)}%` }} />
                         </div>
                         <span className="text-sm font-semibold text-accent">
-                          ${(row.total_ingresos || row.revenue || 0).toLocaleString('es-CO')}
+                          ${(row.ingresos || row.total_ingresos || row.revenue || 0).toLocaleString('es-CO')}
                         </span>
                       </div>
                     ))
