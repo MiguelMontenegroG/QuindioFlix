@@ -1,530 +1,699 @@
--- QuindioFlix – Entrega 2
+-- =============================================================================
+-- QuindioFlix – Entrega 3
+-- Archivo 06: TRANSACCIONES Y CONCURRENCIA  (NT3)
 --
--- Contenido:
---   1. SP_PROCESAR_PAGO          – Procesa un pago de forma atómica con
---                                  SAVEPOINT y manejo de excepciones.
---   2. SP_RENOVACION_MASIVA      – Renueva suscripciones vencidas con
---                                  control de concurrencia SELECT FOR UPDATE.
---   3. SP_TRANSFERIR_PERFIL      – Mueve un perfil entre usuarios de forma
---                                  transaccional (demuestra bloqueos y rollback).
---   4. Demostración de niveles    – READ COMMITTED vs SERIALIZABLE.
---   5. Detección de deadlocks     – Bloque explicativo y estrategia de resolución.
+-- Núcleo 3 · R.A.1 — Administrar componentes fundamentales
+--
+-- Transacciones implementadas:
+--   TXN-1  SP_REGISTRAR_USUARIO_COMPLETO   – Registro atómico (usuario+perfil+pago)
+--   TXN-2  SP_RENOVACION_MENSUAL           – Renovación con SAVEPOINT por fila
+--   TXN-3  SP_ELIMINAR_CUENTA             – Eliminación total todo-o-nada
+--
+-- Escenario de concurrencia:
+--   DEMO_CONCURRENCIA_PLAN                – Dos sesiones cambian el plan del
+--                                           mismo usuario; resuelta con FOR UPDATE
+-- =============================================================================
 
 SET SERVEROUTPUT ON SIZE UNLIMITED;
 
--- 1. SP_PROCESAR_PAGO
--- Propósito : Registra el resultado de un pago recibido desde la pasarela
---             externa. Usa SAVEPOINT para poder revertir parcialmente si
---             la actualización del estado de cuenta falla pero el registro
---             del pago ya fue insertado.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- TABLA DE AUDITORÍA (si no existe aún del archivo 05)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Si ya fue creada en 05_triggers_excepciones.sql, esta sentencia lanzará
+-- ORA-00955 (ignorable al ejecutar el script completo).
+-- En Oracle 23c se puede usar CREATE TABLE IF NOT EXISTS.
+-- Para compatibilidad con 19c se protege con bloque PL/SQL:
+BEGIN
+    EXECUTE IMMEDIATE '
+        CREATE TABLE AUDITORIA_QUINDIOFLIX (
+            id_auditoria   NUMBER          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            tabla_afectada VARCHAR2(50)    NOT NULL,
+            operacion      VARCHAR2(10)    NOT NULL,
+            id_registro    NUMBER,
+            descripcion    VARCHAR2(500),
+            fecha_evento   TIMESTAMP       DEFAULT SYSTIMESTAMP NOT NULL,
+            usuario_bd     VARCHAR2(100)   DEFAULT USER         NOT NULL
+        )
+    ';
+    DBMS_OUTPUT.PUT_LINE('Tabla AUDITORIA_QUINDIOFLIX creada.');
+EXCEPTION
+    WHEN OTHERS THEN
+        IF SQLCODE = -955 THEN   -- ORA-00955: name is already used by an existing object
+            DBMS_OUTPUT.PUT_LINE('AUDITORIA_QUINDIOFLIX ya existe — se continúa.');
+        ELSE
+            RAISE;
+        END IF;
+END;
+/
+
+
+-- =============================================================================
+-- TXN-1: SP_REGISTRAR_USUARIO_COMPLETO
+-- =============================================================================
+-- Descripción  : Crea un nuevo usuario junto con su perfil ADULTO por defecto
+--                y genera el primer pago PENDIENTE. Es una transacción atómica:
+--                si cualquier paso falla, se revierte todo (ROLLBACK completo).
+--
+-- Estados de la transacción:
+--   ACTIVA              → desde el INSERT de USUARIOS hasta el COMMIT
+--   PARCIALMENTE CONFIRMADA → justo antes del COMMIT (todos los INSERTs OK)
+--   CONFIRMADA          → tras COMMIT exitoso
+--   FALLIDA             → si alguna validación lanza RAISE_APPLICATION_ERROR
+--   ABORTADA            → ROLLBACK en el bloque EXCEPTION WHEN OTHERS
+--
 -- Parámetros:
---   p_id_usuario   IN – usuario pagador
---   p_monto        IN – monto cobrado
---   p_metodo       IN – metodo de pago utilizado
---   p_estado       IN – 'EXITOSO' | 'FALLIDO' | 'PENDIENTE'
---   p_id_pago      OUT – id del pago registrado
--- Concurrencia   : SELECT … FOR UPDATE NOWAIT sobre USUARIOS para evitar
---                  que dos procesos actualicen el estado de la misma cuenta
---                  simultáneamente.
+--   p_nombre, p_email, p_telefono, p_fnac, p_ciudad  – datos del usuario
+--   p_id_plan      – plan elegido (1=Básico, 2=Estándar, 3=Premium)
+--   p_id_referidor – usuario referidor (NULL si ninguno)
+--   p_metodo_pago  – método del primer pago
+--   p_id_usuario   OUT – id generado
+-- =============================================================================
 
-CREATE OR REPLACE PROCEDURE SP_PROCESAR_PAGO (
-    p_id_usuario  IN  USUARIOS.id_usuario%TYPE,
-    p_monto       IN  PAGOS.monto%TYPE,
-    p_metodo      IN  PAGOS.metodo_pago%TYPE,
-    p_estado      IN  PAGOS.estado_pago%TYPE,
-    p_id_pago     OUT PAGOS.id_pago%TYPE
+CREATE OR REPLACE PROCEDURE SP_REGISTRAR_USUARIO_COMPLETO (
+    p_nombre       IN  USUARIOS.nombre%TYPE,
+    p_email        IN  USUARIOS.email%TYPE,
+    p_telefono     IN  USUARIOS.telefono%TYPE,
+    p_fnac         IN  USUARIOS.fecha_nacimiento%TYPE,
+    p_ciudad       IN  USUARIOS.ciudad%TYPE,
+    p_id_plan      IN  USUARIOS.id_plan%TYPE,
+    p_id_referidor IN  USUARIOS.id_referidor%TYPE DEFAULT NULL,
+    p_metodo_pago  IN  PAGOS.metodo_pago%TYPE     DEFAULT 'PSE',
+    p_id_usuario   OUT USUARIOS.id_usuario%TYPE
 ) IS
-
-    v_estado_actual  USUARIOS.estado_cuenta%TYPE;
-    v_precio_plan    PLANES.precio_mensual%TYPE;
-    v_nuevo_id_pago  NUMBER;
-
-    -- Excepción para bloqueo no disponible (recurso ocupado)
-    recurso_bloqueado EXCEPTION;
-    PRAGMA EXCEPTION_INIT(recurso_bloqueado, -54);  -- ORA-00054
+    -- ── Variables locales ──────────────────────────────────────────────────
+    v_email_existe   NUMBER;
+    v_plan_existe    NUMBER;
+    v_ref_activo     NUMBER;
+    v_precio_base    PLANES.precio_mensual%TYPE;
+    v_monto_pago     NUMBER;
+    v_nuevo_id       NUMBER;
+    v_nuevo_perfil   NUMBER;
+    v_nuevo_pago     NUMBER;
 
 BEGIN
-    -- PASO 1: Bloquear la fila del usuario para evitar conflictos
-    -- NOWAIT: si otro proceso ya lo bloquea, fallamos rápido (no esperamos).
-    BEGIN
-        SELECT u.estado_cuenta, p.precio_mensual
-        INTO   v_estado_actual, v_precio_plan
-        FROM   USUARIOS u
-        JOIN   PLANES   p ON p.id_plan = u.id_plan
-        WHERE  u.id_usuario = p_id_usuario
-        FOR UPDATE NOWAIT;   -- <── Control de concurrencia
-    EXCEPTION
-        WHEN recurso_bloqueado THEN
-            RAISE_APPLICATION_ERROR(-20005,
-                'SP_PROCESAR_PAGO: el registro del usuario '
-                || p_id_usuario
-                || ' está siendo modificado por otra transacción. '
-                || 'Reintente en unos segundos.');
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20005,
-                'SP_PROCESAR_PAGO: usuario ' || p_id_usuario || ' no encontrado.');
-    END;
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO: ACTIVA  (la transacción comienza aquí)
+    -- ════════════════════════════════════════════════════════════════════════
 
-    -- PASO 2: Validar monto
-    IF p_monto <= 0 THEN
+    -- PASO 1 — Validaciones previas (sin DML todavía)
+    IF p_nombre   IS NULL OR p_email  IS NULL OR
+       p_telefono IS NULL OR p_fnac   IS NULL OR p_ciudad IS NULL THEN
+        -- ESTADO: FALLIDA → el RAISE aborta antes de cualquier DML
         RAISE_APPLICATION_ERROR(-20005,
-            'SP_PROCESAR_PAGO: el monto debe ser mayor a 0.');
+            'TXN-1: todos los campos obligatorios deben tener valor.');
     END IF;
 
-    -- PASO 3: SAVEPOINT antes de insertar el pago
-    SAVEPOINT sp_antes_pago;
+    SELECT COUNT(*) INTO v_email_existe
+    FROM USUARIOS WHERE email = LOWER(TRIM(p_email));
+    IF v_email_existe > 0 THEN
+        RAISE_APPLICATION_ERROR(-20001,
+            'TXN-1: el email "' || p_email || '" ya está registrado.');
+    END IF;
 
-    SELECT seq_pagos.NEXTVAL INTO v_nuevo_id_pago FROM DUAL;
+    SELECT COUNT(*) INTO v_plan_existe
+    FROM PLANES WHERE id_plan = p_id_plan;
+    IF v_plan_existe = 0 THEN
+        RAISE_APPLICATION_ERROR(-20006,
+            'TXN-1: el plan ' || p_id_plan || ' no existe.');
+    END IF;
+
+    IF p_id_referidor IS NOT NULL THEN
+        SELECT COUNT(*) INTO v_ref_activo
+        FROM USUARIOS
+        WHERE id_usuario = p_id_referidor AND estado_cuenta = 'ACTIVO';
+        IF v_ref_activo = 0 THEN
+            RAISE_APPLICATION_ERROR(-20005,
+                'TXN-1: el referidor ' || p_id_referidor
+                || ' no existe o está INACTIVO.');
+        END IF;
+    END IF;
+
+    SELECT precio_mensual INTO v_precio_base
+    FROM PLANES WHERE id_plan = p_id_plan;
+
+    -- PASO 2 — INSERT en USUARIOS  ← primera operación DML de la transacción
+    SELECT seq_usuarios.NEXTVAL INTO v_nuevo_id FROM DUAL;
+
+    INSERT INTO USUARIOS (
+        id_usuario, nombre, email, telefono,
+        fecha_nacimiento, ciudad, estado_cuenta,
+        fecha_registro, id_plan, id_referidor
+    ) VALUES (
+        v_nuevo_id, TRIM(p_nombre), LOWER(TRIM(p_email)), p_telefono,
+        p_fnac, TRIM(p_ciudad), 'ACTIVO',
+        SYSDATE, p_id_plan, p_id_referidor
+    );
+    DBMS_OUTPUT.PUT_LINE('[TXN-1] PASO 2 OK — usuario ' || v_nuevo_id || ' insertado.');
+
+    -- PASO 3 — INSERT en PERFILES (perfil ADULTO por defecto)
+    -- Si este falla, el ROLLBACK en EXCEPTION deshace también el INSERT previo.
+    SELECT seq_perfiles.NEXTVAL INTO v_nuevo_perfil FROM DUAL;
+
+    INSERT INTO PERFILES (id_perfil, id_usuario, nombre_perfil, avatar, tipo)
+    VALUES (v_nuevo_perfil, v_nuevo_id,
+            SUBSTR(TRIM(p_nombre), 1, 50), 'default.png', 'ADULTO');
+    DBMS_OUTPUT.PUT_LINE('[TXN-1] PASO 3 OK — perfil ' || v_nuevo_perfil || ' creado.');
+
+    -- PASO 4 — INSERT en PAGOS (primer pago PENDIENTE)
+    v_monto_pago := CASE WHEN p_id_referidor IS NOT NULL
+                         THEN ROUND(v_precio_base * 0.85, 2)   -- 15 % descuento referido
+                         ELSE v_precio_base
+                    END;
+
+    SELECT seq_pagos.NEXTVAL INTO v_nuevo_pago FROM DUAL;
 
     INSERT INTO PAGOS (
         id_pago, id_usuario, fecha_pago, monto,
         metodo_pago, estado_pago, fecha_vencimiento
     ) VALUES (
-        v_nuevo_id_pago,
-        p_id_usuario,
-        SYSDATE,
-        p_monto,
-        p_metodo,
-        p_estado,
-        ADD_MONTHS(SYSDATE, 1)
+        v_nuevo_pago, v_nuevo_id, SYSDATE, v_monto_pago,
+        p_metodo_pago, 'PENDIENTE', ADD_MONTHS(SYSDATE, 1)
     );
+    DBMS_OUTPUT.PUT_LINE('[TXN-1] PASO 4 OK — pago ' || v_nuevo_pago
+        || ' por $' || v_monto_pago || ' generado.');
 
-    p_id_pago := v_nuevo_id_pago;
+    -- Auditar
+    INSERT INTO AUDITORIA_QUINDIOFLIX (tabla_afectada, operacion, id_registro, descripcion)
+    VALUES ('USUARIOS', 'INSERT', v_nuevo_id,
+            'TXN-1: registro completo. Usuario=' || v_nuevo_id
+            || ', Perfil=' || v_nuevo_perfil || ', Pago=' || v_nuevo_pago);
 
-    -- PASO 4: Actualizar estado de la cuenta según resultado del pago
-    -- (El trigger TRG_AUDITORIA_PAGOS ya maneja la lógica de mora,
-    --  aquí la reactivación inmediata ante pago exitoso es explícita.)
-    IF p_estado = 'EXITOSO' AND v_estado_actual = 'INACTIVO' THEN
-        UPDATE USUARIOS
-        SET    estado_cuenta = 'ACTIVO'
-        WHERE  id_usuario    = p_id_usuario;
-
-        DBMS_OUTPUT.PUT_LINE(
-            'SP_PROCESAR_PAGO: cuenta del usuario ' || p_id_usuario
-            || ' reactivada por pago exitoso.');
-    END IF;
-
-    -- PASO 5: Confirmar toda la transaccion
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO: PARCIALMENTE CONFIRMADA  (todos los pasos DML completados,
+    --         buffer listo para confirmar)
+    -- ════════════════════════════════════════════════════════════════════════
     COMMIT;
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO: CONFIRMADA
+    -- ════════════════════════════════════════════════════════════════════════
 
-    DBMS_OUTPUT.PUT_LINE(
-        'SP_PROCESAR_PAGO: pago #' || v_nuevo_id_pago
-        || ' registrado para usuario ' || p_id_usuario
-        || ' | Monto: $' || TO_CHAR(p_monto, 'FM99,999,990.00')
-        || ' | Estado: ' || p_estado
-    );
+    p_id_usuario := v_nuevo_id;
+    DBMS_OUTPUT.PUT_LINE('[TXN-1] ✔ COMMIT — usuario '
+        || v_nuevo_id || ' registrado exitosamente.');
 
 EXCEPTION
-    -- Si algo falla DESPUÉS de insertar el pago, regresamos al savepoint
-    -- (el pago queda sin confirmar y el usuario no se ve afectado).
     WHEN OTHERS THEN
-        ROLLBACK TO sp_antes_pago;
-        DBMS_OUTPUT.PUT_LINE(
-            'ERROR en SP_PROCESAR_PAGO – rollback al savepoint: ' || SQLERRM);
+        -- ══════════════════════════════════════════════════════════════════
+        -- ESTADO: ABORTADA  → deshace TODOS los DML de esta transacción
+        -- ══════════════════════════════════════════════════════════════════
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('[TXN-1] ✖ ROLLBACK — ' || SQLERRM);
         RAISE;
-END SP_PROCESAR_PAGO;
+END SP_REGISTRAR_USUARIO_COMPLETO;
 /
 
--- 2. SP_RENOVACION_MASIVA
--- Propósito : Recorre todos los usuarios ACTIVOS cuyo pago venció HOY o antes,
---             calcula el nuevo monto con FN_CALCULAR_MONTO y registra el cobro.
---             Usa COMMIT cada N filas (batch commit) para evitar acumular un
---             undo segment gigante y reducir el tiempo de bloqueo.
--- Parámetros:
---   p_batch_size  IN – cantidad de filas entre cada COMMIT (default 50)
--- Concurrencia   : Cursor con FOR UPDATE SKIP LOCKED para omitir filas que
---                  otra sesión esté procesando simultáneamente.
 
-CREATE OR REPLACE PROCEDURE SP_RENOVACION_MASIVA (
+-- =============================================================================
+-- TXN-2: SP_RENOVACION_MENSUAL
+-- =============================================================================
+-- Descripción  : Recorre los usuarios ACTIVOS con suscripción vencida, verifica
+--                la fecha de vencimiento, calcula el monto con FN_CALCULAR_MONTO
+--                y registra el nuevo ciclo de pago.
+--
+--                Usa SAVEPOINT por cada usuario:
+--                  • Si falla un usuario → ROLLBACK TO savepoint de ese usuario
+--                    (los anteriores ya quedaron en el buffer del batch)
+--                  • Cada p_batch_size usuarios → COMMIT parcial (batch commit)
+--
+-- Estados de la transacción:
+--   ACTIVA              → al abrir el cursor
+--   (por usuario)
+--     ACTIVA            → dentro del loop, antes del SAVEPOINT fila
+--     PARCIALMENTE CONF → INSERT de pago exitoso, antes de COMMIT batch
+--     CONFIRMADA        → tras cada COMMIT batch
+--     FALLIDA           → si falla el cálculo o el INSERT de un usuario
+--     ABORTADA          → ROLLBACK TO savepoint_fila (solo ese usuario)
+--   (global)
+--     CONFIRMADA        → COMMIT final al salir del loop
+--     ABORTADA          → ROLLBACK en EXCEPTION WHEN OTHERS del bloque externo
+--
+-- Parámetros:
+--   p_batch_size – filas entre cada COMMIT parcial (default 50)
+-- Concurrencia  : FOR UPDATE SKIP LOCKED — otra sesión paralela salta filas
+--                 que este proceso ya tiene bloqueadas.
+-- =============================================================================
+
+CREATE OR REPLACE PROCEDURE SP_RENOVACION_MENSUAL (
     p_batch_size IN NUMBER DEFAULT 50
 ) IS
 
-    v_procesados  PLS_INTEGER := 0;
-    v_exitosos    PLS_INTEGER := 0;
-    v_fallidos    PLS_INTEGER := 0;
-    v_monto       NUMBER;
-    v_metodo      PAGOS.metodo_pago%TYPE;
+    v_procesados   PLS_INTEGER := 0;
+    v_exitosos     PLS_INTEGER := 0;
+    v_fallidos     PLS_INTEGER := 0;
+    v_monto        NUMBER;
+    v_metodo       PAGOS.metodo_pago%TYPE;
+    v_nuevo_pago   NUMBER;
 
-    -- Cursor con SKIP LOCKED: omite filas bloqueadas por otra sesión.
-    -- Así dos procesos de renovación paralelos no colisionan.
-    CURSOR cur_a_renovar IS
-        SELECT u.id_usuario,
-               u.nombre,
-               MAX(pg.fecha_vencimiento) AS ultimo_venc
-        FROM   USUARIOS u
-        JOIN   PAGOS    pg ON pg.id_usuario = u.id_usuario
-        WHERE  u.estado_cuenta = 'ACTIVO'
-        AND    pg.estado_pago  = 'EXITOSO'
-        GROUP BY u.id_usuario, u.nombre
-        HAVING MAX(pg.fecha_vencimiento) <= SYSDATE
-        ORDER BY u.id_usuario
-        FOR UPDATE OF u.estado_cuenta SKIP LOCKED;
+    CURSOR cur_vencidos IS
+        SELECT  u.id_usuario,
+                u.nombre,
+                MAX(pg.fecha_vencimiento) AS ultimo_venc
+        FROM    USUARIOS u
+        JOIN    PAGOS    pg ON pg.id_usuario = u.id_usuario
+        WHERE   u.estado_cuenta = 'ACTIVO'
+        AND     pg.estado_pago  = 'EXITOSO'
+        GROUP   BY u.id_usuario, u.nombre
+        HAVING  MAX(pg.fecha_vencimiento) <= SYSDATE
+        ORDER   BY u.id_usuario
+        FOR UPDATE OF u.estado_cuenta SKIP LOCKED;   -- ← control de concurrencia
 
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('=== RENOVACIÓN MASIVA – ' || TO_CHAR(SYSDATE,'DD/MM/YYYY HH24:MI') || ' ===');
+    DBMS_OUTPUT.PUT_LINE('════════════════════════════════════════════════════');
+    DBMS_OUTPUT.PUT_LINE('[TXN-2] INICIO RENOVACIÓN MENSUAL — '
+        || TO_CHAR(SYSDATE,'DD/MM/YYYY HH24:MI:SS'));
+    DBMS_OUTPUT.PUT_LINE('════════════════════════════════════════════════════');
 
-    FOR reg IN cur_a_renovar LOOP
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO GLOBAL: ACTIVA
+    -- ════════════════════════════════════════════════════════════════════════
+
+    FOR reg IN cur_vencidos LOOP
+
+        -- ── SAVEPOINT por usuario ──────────────────────────────────────────
+        SAVEPOINT sp_usuario_fila;
+        -- ESTADO (usuario actual): ACTIVA
 
         BEGIN
-            SAVEPOINT sp_renovacion_fila;
+            -- Verificar vencimiento (regla de negocio)
+            IF reg.ultimo_venc > SYSDATE THEN
+                DBMS_OUTPUT.PUT_LINE('  [SKIP] Usuario ' || reg.id_usuario
+                    || ': vencimiento en el futuro (' || reg.ultimo_venc || ')');
+                GOTO siguiente_usuario;
+            END IF;
 
-            -- Calcular monto con descuentos
+            -- Calcular monto con descuentos aplicables
             v_monto := FN_CALCULAR_MONTO(reg.id_usuario);
 
-            -- Metodo de pago: usar el último exitoso del usuario
-            SELECT metodo_pago
-            INTO   v_metodo
-            FROM   PAGOS
-            WHERE  id_usuario  = reg.id_usuario
-            AND    estado_pago = 'EXITOSO'
-            AND    ROWNUM      = 1
-            ORDER BY fecha_pago DESC;
+            -- Método de pago: el último exitoso registrado
+            BEGIN
+                SELECT metodo_pago INTO v_metodo
+                FROM (
+                    SELECT metodo_pago
+                    FROM   PAGOS
+                    WHERE  id_usuario  = reg.id_usuario
+                    AND    estado_pago = 'EXITOSO'
+                    ORDER BY fecha_pago DESC
+                )
+                WHERE ROWNUM = 1;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    v_metodo := 'PSE';   -- método por defecto si no hay registro
+            END;
 
-            -- Insertar nuevo pago PENDIENTE
+            -- Registrar nuevo ciclo como PENDIENTE
+            SELECT seq_pagos.NEXTVAL INTO v_nuevo_pago FROM DUAL;
+
             INSERT INTO PAGOS (
                 id_pago, id_usuario, fecha_pago, monto,
                 metodo_pago, estado_pago, fecha_vencimiento
             ) VALUES (
-                seq_pagos.NEXTVAL,
-                reg.id_usuario,
-                SYSDATE,
-                v_monto,
-                v_metodo,
-                'PENDIENTE',
-                ADD_MONTHS(SYSDATE, 1)
+                v_nuevo_pago, reg.id_usuario, SYSDATE, v_monto,
+                v_metodo, 'PENDIENTE', ADD_MONTHS(SYSDATE, 1)
             );
 
-            v_exitosos  := v_exitosos + 1;
+            -- Auditar
+            INSERT INTO AUDITORIA_QUINDIOFLIX
+                (tabla_afectada, operacion, id_registro, descripcion)
+            VALUES ('PAGOS', 'INSERT', v_nuevo_pago,
+                    'TXN-2: renovación usuario ' || reg.id_usuario
+                    || ' | monto $' || v_monto);
+
+            v_exitosos := v_exitosos + 1;
+            DBMS_OUTPUT.PUT_LINE('  [OK] Usuario ' || reg.id_usuario
+                || ' — ' || reg.nombre
+                || ' | Vencía: ' || TO_CHAR(reg.ultimo_venc,'DD/MM/YYYY')
+                || ' | Monto: $' || v_monto
+                || ' | Pago#: ' || v_nuevo_pago);
 
         EXCEPTION
             WHEN OTHERS THEN
-                ROLLBACK TO sp_renovacion_fila;
+                -- ════════════════════════════════════════════════════════
+                -- ESTADO (usuario actual): ABORTADA
+                -- Solo se revierte la operación de este usuario
+                -- ════════════════════════════════════════════════════════
+                ROLLBACK TO sp_usuario_fila;
                 v_fallidos := v_fallidos + 1;
-                DBMS_OUTPUT.PUT_LINE(
-                    '  ✖ Error renovando usuario ' || reg.id_usuario
-                    || ': ' || SQLERRM);
+                DBMS_OUTPUT.PUT_LINE('  [FAIL] Usuario ' || reg.id_usuario
+                    || ': ' || SQLERRM || ' — ROLLBACK TO sp_usuario_fila');
         END;
 
+        <<siguiente_usuario>>
         v_procesados := v_procesados + 1;
 
-        -- Batch commit: confirmar cada p_batch_size filas
+        -- Batch commit cada p_batch_size filas
         IF MOD(v_procesados, p_batch_size) = 0 THEN
             COMMIT;
-            DBMS_OUTPUT.PUT_LINE(
-                '  [COMMIT PARCIAL] ' || v_procesados || ' filas procesadas...');
+            -- ESTADO GLOBAL (lote): PARCIALMENTE CONFIRMADA → CONFIRMADA
+            DBMS_OUTPUT.PUT_LINE('  [COMMIT BATCH] ' || v_procesados
+                || ' usuarios procesados...');
         END IF;
 
     END LOOP;
 
-    -- Confirmar las filas restantes del último lote
+    -- COMMIT del lote final
     COMMIT;
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO GLOBAL: CONFIRMADA
+    -- ════════════════════════════════════════════════════════════════════════
 
-    DBMS_OUTPUT.PUT_LINE('---------------------------------------------------');
-    DBMS_OUTPUT.PUT_LINE('  Procesados : ' || v_procesados);
-    DBMS_OUTPUT.PUT_LINE('  Exitosos   : ' || v_exitosos);
-    DBMS_OUTPUT.PUT_LINE('  Fallidos   : ' || v_fallidos);
-    DBMS_OUTPUT.PUT_LINE('=== FIN RENOVACIÓN MASIVA ===');
+    DBMS_OUTPUT.PUT_LINE('────────────────────────────────────────────────────');
+    DBMS_OUTPUT.PUT_LINE('[TXN-2] Procesados : ' || v_procesados);
+    DBMS_OUTPUT.PUT_LINE('[TXN-2] Exitosos   : ' || v_exitosos);
+    DBMS_OUTPUT.PUT_LINE('[TXN-2] Fallidos   : ' || v_fallidos);
+    DBMS_OUTPUT.PUT_LINE('[TXN-2] ✔ RENOVACIÓN MENSUAL COMPLETADA.');
+    DBMS_OUTPUT.PUT_LINE('════════════════════════════════════════════════════');
 
 EXCEPTION
     WHEN OTHERS THEN
+        -- ════════════════════════════════════════════════════════════════════
+        -- ESTADO GLOBAL: ABORTADA (error crítico fuera del loop interno)
+        -- ════════════════════════════════════════════════════════════════════
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('ERROR CRÍTICO en SP_RENOVACION_MASIVA: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('[TXN-2] ✖ ERROR CRÍTICO — ROLLBACK total: ' || SQLERRM);
         RAISE;
-END SP_RENOVACION_MASIVA;
+END SP_RENOVACION_MENSUAL;
 /
 
--- 3. SP_TRANSFERIR_PERFIL
--- Propósito : Transfiere un perfil de un usuario origen a un usuario destino.
---             Demuestra uso de múltiples SAVEPOINTs y ROLLBACK parcial.
---             Valida que el destino tenga capacidad de perfiles disponibles.
+
+-- =============================================================================
+-- TXN-3: SP_ELIMINAR_CUENTA
+-- =============================================================================
+-- Descripción  : Elimina completamente la cuenta de un usuario siguiendo el
+--                orden correcto de dependencias de FK:
+--                  1. CALIFICACIONES  (dependen de PERFILES y CONTENIDO)
+--                  2. FAVORITOS       (dependen de PERFILES y CONTENIDO)
+--                  3. REPRODUCCIONES  (dependen de PERFILES y CONTENIDO)
+--                  4. REPORTES        (dependen de PERFILES → se actualiza moderador)
+--                  5. PERFILES        (dependen de USUARIOS)
+--                  6. PAGOS           (dependen de USUARIOS)
+--                  7. USUARIOS        (tabla raíz)
+--
+--                Es una transacción TODO-O-NADA: un SAVEPOINT global al inicio
+--                permite revertir absolutamente todo si falla cualquier paso.
+--
+-- Estados de la transacción:
+--   ACTIVA              → desde el SAVEPOINT sp_eliminar_inicio
+--   PARCIALMENTE CONF   → todos los DELETE completados, antes del COMMIT
+--   CONFIRMADA          → tras COMMIT
+--   FALLIDA / ABORTADA  → ROLLBACK TO sp_eliminar_inicio en EXCEPTION
+--
 -- Parámetros:
---   p_id_perfil    IN – perfil a transferir
---   p_id_usuario_dest IN – usuario que recibirá el perfil
--- Concurrencia   : FOR UPDATE en ambas filas de usuario para serializar
---                  modificaciones concurrentes.
+--   p_id_usuario   IN – usuario a eliminar
+--   p_confirmacion IN – debe enviarse 'CONFIRMAR' (medida de seguridad)
+-- =============================================================================
 
-CREATE OR REPLACE PROCEDURE SP_TRANSFERIR_PERFIL (
-    p_id_perfil       IN PERFILES.id_perfil%TYPE,
-    p_id_usuario_dest IN USUARIOS.id_usuario%TYPE
+CREATE OR REPLACE PROCEDURE SP_ELIMINAR_CUENTA (
+    p_id_usuario   IN USUARIOS.id_usuario%TYPE,
+    p_confirmacion IN VARCHAR2
 ) IS
+    v_nombre         USUARIOS.nombre%TYPE;
+    v_cal_del        NUMBER := 0;
+    v_fav_del        NUMBER := 0;
+    v_rep_del        NUMBER := 0;
+    v_rep_upd        NUMBER := 0;
+    v_perf_del       NUMBER := 0;
+    v_pag_del        NUMBER := 0;
 
-    v_id_usuario_orig  USUARIOS.id_usuario%TYPE;
-    v_max_dest         PLANES.max_perfiles%TYPE;
-    v_perfiles_dest    NUMBER;
-    v_nombre_perfil    PERFILES.nombre_perfil%TYPE;
-
-    recurso_bloqueado  EXCEPTION;
+    recurso_bloqueado EXCEPTION;
     PRAGMA EXCEPTION_INIT(recurso_bloqueado, -54);
 
 BEGIN
-    -- Obtener usuario origen del perfil
+    -- Verificar palabra de confirmación (seguridad operacional)
+    IF NVL(p_confirmacion, 'X') <> 'CONFIRMAR' THEN
+        RAISE_APPLICATION_ERROR(-20005,
+            'TXN-3: debe pasar p_confirmacion => ''CONFIRMAR'' para ejecutar '
+            || 'la eliminación de cuenta. Operación cancelada.');
+    END IF;
+
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO: ACTIVA  — SAVEPOINT global
+    -- ════════════════════════════════════════════════════════════════════════
+    SAVEPOINT sp_eliminar_inicio;
+
+    -- Obtener y bloquear la fila del usuario (NOWAIT para concurrencia)
     BEGIN
-        SELECT id_usuario, nombre_perfil
-        INTO   v_id_usuario_orig, v_nombre_perfil
-        FROM   PERFILES
-        WHERE  id_perfil = p_id_perfil;
+        SELECT nombre INTO v_nombre
+        FROM   USUARIOS
+        WHERE  id_usuario = p_id_usuario
+        FOR UPDATE NOWAIT;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20005,
-                'SP_TRANSFERIR_PERFIL: perfil ' || p_id_perfil || ' no existe.');
-    END;
-
-    IF v_id_usuario_orig = p_id_usuario_dest THEN
-        DBMS_OUTPUT.PUT_LINE('SP_TRANSFERIR_PERFIL: el perfil ya pertenece al usuario destino.');
-        RETURN;
-    END IF;
-
-    -- Bloquear AMBAS filas de usuario para evitar conflictos
-    SAVEPOINT sp_inicio_transferencia;
-
-    BEGIN
-        -- Bloquear usuario con id menor primero (convención anti-deadlock)
-        IF LEAST(v_id_usuario_orig, p_id_usuario_dest) = v_id_usuario_orig THEN
-            SELECT id_usuario INTO v_id_usuario_orig
-            FROM   USUARIOS WHERE id_usuario = v_id_usuario_orig FOR UPDATE NOWAIT;
-
-            SELECT id_usuario INTO p_id_usuario_dest
-            FROM   USUARIOS WHERE id_usuario = p_id_usuario_dest FOR UPDATE NOWAIT;
-        ELSE
-            SELECT id_usuario INTO p_id_usuario_dest
-            FROM   USUARIOS WHERE id_usuario = p_id_usuario_dest FOR UPDATE NOWAIT;
-
-            SELECT id_usuario INTO v_id_usuario_orig
-            FROM   USUARIOS WHERE id_usuario = v_id_usuario_orig FOR UPDATE NOWAIT;
-        END IF;
-    EXCEPTION
+                'TXN-3: usuario ' || p_id_usuario || ' no encontrado.');
         WHEN recurso_bloqueado THEN
-            ROLLBACK TO sp_inicio_transferencia;
             RAISE_APPLICATION_ERROR(-20005,
-                'SP_TRANSFERIR_PERFIL: uno de los usuarios está siendo '
-                || 'modificado. Reintente.');
+                'TXN-3: el usuario ' || p_id_usuario
+                || ' está bloqueado por otra sesión. Reintente.');
     END;
 
-    -- Validar capacidad del destino
-    SELECT p.max_perfiles INTO v_max_dest
-    FROM   USUARIOS u JOIN PLANES p ON p.id_plan = u.id_plan
-    WHERE  u.id_usuario = p_id_usuario_dest;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] Iniciando eliminación de "' || v_nombre
+        || '" (id=' || p_id_usuario || ')...');
 
-    SELECT COUNT(*) INTO v_perfiles_dest
-    FROM   PERFILES WHERE id_usuario = p_id_usuario_dest;
+    -- PASO 1 — Eliminar CALIFICACIONES de todos los perfiles del usuario
+    DELETE FROM CALIFICACIONES
+    WHERE  id_perfil IN (SELECT id_perfil FROM PERFILES WHERE id_usuario = p_id_usuario);
+    v_cal_del := SQL%ROWCOUNT;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 1: ' || v_cal_del || ' calificación(es) eliminada(s).');
 
-    IF v_perfiles_dest >= v_max_dest THEN
-        ROLLBACK TO sp_inicio_transferencia;
-        RAISE_APPLICATION_ERROR(-20002,
-            'SP_TRANSFERIR_PERFIL: el usuario destino ' || p_id_usuario_dest
-            || ' ya alcanzó su límite de ' || v_max_dest || ' perfiles.');
-    END IF;
+    -- PASO 2 — Eliminar FAVORITOS
+    DELETE FROM FAVORITOS
+    WHERE  id_perfil IN (SELECT id_perfil FROM PERFILES WHERE id_usuario = p_id_usuario);
+    v_fav_del := SQL%ROWCOUNT;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 2: ' || v_fav_del || ' favorito(s) eliminado(s).');
 
-    -- Realizar la transferencia
-    SAVEPOINT sp_antes_update;
+    -- PASO 3 — Eliminar REPRODUCCIONES
+    DELETE FROM REPRODUCCIONES
+    WHERE  id_perfil IN (SELECT id_perfil FROM PERFILES WHERE id_usuario = p_id_usuario);
+    v_rep_del := SQL%ROWCOUNT;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 3: ' || v_rep_del || ' reproducción(es) eliminada(s).');
 
-    UPDATE PERFILES
-    SET    id_usuario = p_id_usuario_dest
-    WHERE  id_perfil  = p_id_perfil;
+    -- PASO 4 — Desvincular REPORTES donde el usuario es moderador
+    --          (no se puede eliminar el usuario si hay FK en REPORTES.id_moderador)
+    UPDATE REPORTES SET id_moderador = NULL
+    WHERE  id_moderador = p_id_usuario;
+    v_rep_upd := SQL%ROWCOUNT;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 4: ' || v_rep_upd || ' reporte(s) desvinculado(s) como moderador.');
 
+    -- PASO 5 — Eliminar PERFILES
+    --          Las FK de REPORTES.id_perfil_reportador usarán el CASCADE definido
+    --          en PERFILES (ON DELETE CASCADE desde FAVORITOS, REPRODUCCIONES ya
+    --          eliminados). REPORTES no tiene CASCADE → eliminamos reportes primero.
+    DELETE FROM REPORTES
+    WHERE  id_perfil_reportador IN (
+               SELECT id_perfil FROM PERFILES WHERE id_usuario = p_id_usuario);
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 5a: reportes propios del usuario eliminados ('
+        || SQL%ROWCOUNT || ').');
+
+    DELETE FROM PERFILES WHERE id_usuario = p_id_usuario;
+    v_perf_del := SQL%ROWCOUNT;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 5b: ' || v_perf_del || ' perfil(es) eliminado(s).');
+
+    -- PASO 6 — Eliminar PAGOS
+    DELETE FROM PAGOS WHERE id_usuario = p_id_usuario;
+    v_pag_del := SQL%ROWCOUNT;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 6: ' || v_pag_del || ' pago(s) eliminado(s).');
+
+    -- PASO 7 — Eliminar fila de USUARIOS que referencian a este como referidor
+    UPDATE USUARIOS SET id_referidor = NULL
+    WHERE  id_referidor = p_id_usuario;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 7a: referencias de referidor limpiadas ('
+        || SQL%ROWCOUNT || ').');
+
+    -- PASO 7b — Eliminar el USUARIO
+    DELETE FROM USUARIOS WHERE id_usuario = p_id_usuario;
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] PASO 7b: usuario ' || p_id_usuario || ' eliminado.');
+
+    -- Auditar antes del COMMIT
+    INSERT INTO AUDITORIA_QUINDIOFLIX (tabla_afectada, operacion, id_registro, descripcion)
+    VALUES ('USUARIOS', 'DELETE', p_id_usuario,
+            'TXN-3: cuenta eliminada. Cal=' || v_cal_del
+            || ', Fav=' || v_fav_del || ', Repr=' || v_rep_del
+            || ', Perf=' || v_perf_del || ', Pagos=' || v_pag_del);
+
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO: PARCIALMENTE CONFIRMADA
+    -- ════════════════════════════════════════════════════════════════════════
     COMMIT;
-
-    DBMS_OUTPUT.PUT_LINE(
-        'SP_TRANSFERIR_PERFIL: perfil "' || v_nombre_perfil
-        || '" (id=' || p_id_perfil || ') transferido del usuario '
-        || v_id_usuario_orig || ' al usuario ' || p_id_usuario_dest || '.'
-    );
+    -- ════════════════════════════════════════════════════════════════════════
+    -- ESTADO: CONFIRMADA
+    -- ════════════════════════════════════════════════════════════════════════
+    DBMS_OUTPUT.PUT_LINE('[TXN-3] ✔ COMMIT — cuenta "' || v_nombre || '" eliminada exitosamente.');
 
 EXCEPTION
     WHEN OTHERS THEN
-        ROLLBACK TO sp_inicio_transferencia;
-        DBMS_OUTPUT.PUT_LINE('ERROR en SP_TRANSFERIR_PERFIL: ' || SQLERRM);
+        -- ════════════════════════════════════════════════════════════════════
+        -- ESTADO: ABORTADA — se revierte TODO desde el SAVEPOINT inicial
+        -- ════════════════════════════════════════════════════════════════════
+        ROLLBACK TO sp_eliminar_inicio;
+        DBMS_OUTPUT.PUT_LINE('[TXN-3] ✖ ROLLBACK — la cuenta NO fue eliminada. '
+            || SQLERRM);
         RAISE;
-END SP_TRANSFERIR_PERFIL;
+END SP_ELIMINAR_CUENTA;
 /
 
--- 4. DEMOSTRACIÓN DE NIVELES DE AISLAMIENTO
--- Contexto teórico y scripts para ilustrar READ COMMITTED vs SERIALIZABLE
--- en el motor Oracle de QuindioFlix.
 
--- 4.1 READ COMMITTED (nivel por defecto en Oracle)
---     • Cada lectura ve la última versión CONFIRMADA de cada fila.
---     • Puede producir "lecturas no repetibles": si la Sesión A lee el saldo
---       dos veces y la Sesión B confirma un cambio en medio, A verá valores
---       distintos en cada lectura.
-
-
-/*
--- SESIÓN A (nivel por defecto READ COMMITTED):
-SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-
-SELECT estado_cuenta FROM USUARIOS WHERE id_usuario = 1;
--- Resultado: ACTIVO
-
--- [Sesión B confirma UPDATE poniendo INACTIVO al mismo usuario]
-
-SELECT estado_cuenta FROM USUARIOS WHERE id_usuario = 1;
--- Resultado: INACTIVO  ← lectura no repetible (fenómeno visible en READ COMMITTED)
-
-ROLLBACK;
-*/
-
-
--- 4.2 SERIALIZABLE
---     • Toda la transacción ve un snapshot consistente tomado al inicio.
---     • Elimina lecturas no repetibles y lecturas fantasma.
---     • Puede producir ORA-08177 si intenta modificar filas cambiadas por otros.
+-- =============================================================================
+-- ESCENARIO DE CONCURRENCIA — Cambio simultáneo de plan
+-- =============================================================================
+-- Problema     : Dos sesiones intentan cambiar el plan del usuario id=7
+--               simultáneamente. Sin control, podrían aplicarse dos cambios
+--               inconsistentes (last-write-wins sin validación).
+--
+-- Solución     : SELECT … FOR UPDATE NOWAIT bloquea la fila del usuario en
+--               la primera sesión; la segunda recibe ORA-00054 inmediatamente
+--               y puede reintentar en lugar de esperar indefinidamente.
+--
+-- Cómo ejecutar la demostración:
+--   — Abrir DOS ventanas de SQL*Plus / SQL Developer conectadas al esquema.
+--   — Ejecutar el Bloque A en la Sesión A.
+--   — Antes de que la Sesión A haga COMMIT, ejecutar el Bloque B en la Sesión B.
+--   — Observar el error ORA-20005 en la Sesión B.
+--   — Ejecutar COMMIT en la Sesión A.
+--   — Ejecutar de nuevo el Bloque B (ahora tiene éxito).
+-- =============================================================================
 
 /*
--- SESIÓN A (SERIALIZABLE):
-SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-SELECT estado_cuenta FROM USUARIOS WHERE id_usuario = 1;
--- Resultado: ACTIVO
-
--- [Sesión B confirma UPDATE poniendo INACTIVO al mismo usuario]
-
-SELECT estado_cuenta FROM USUARIOS WHERE id_usuario = 1;
--- Resultado: ACTIVO  ← snapshot inicial, no ve el cambio de B
-
--- Si A intenta UPDATE sobre esa misma fila → ORA-08177: can't serialize access
-
-ROLLBACK;
+───────────────────────────────────────────────────────────────
+SESIÓN A — Inicia el cambio de plan del usuario 7 a Premium
+───────────────────────────────────────────────────────────────
 */
 
--- 4.3 Bloque ejecutable: comparación de niveles en un escenario de facturación
-
-
+-- BLOQUE SESIÓN A (ejecutar primero y NO hacer COMMIT todavía):
 DECLARE
-    v_estado_1  USUARIOS.estado_cuenta%TYPE;
-    v_estado_2  USUARIOS.estado_cuenta%TYPE;
-    v_nivel     VARCHAR2(30) := 'READ COMMITTED'; -- documentativo
+    v_estado    USUARIOS.estado_cuenta%TYPE;
+    v_plan_act  PLANES.nombre_plan%TYPE;
+
+    recurso_bloqueado EXCEPTION;
+    PRAGMA EXCEPTION_INIT(recurso_bloqueado, -54);
 BEGIN
-    -- READ COMMITTED (comportamiento por defecto de Oracle)
-    -- Cada SELECT obtiene la versión confirmada más reciente.
-    SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+    DBMS_OUTPUT.PUT_LINE('[SESIÓN A] Intentando bloquear usuario 7...');
 
-    SELECT estado_cuenta INTO v_estado_1
-    FROM   USUARIOS WHERE id_usuario = 1;
+    -- FOR UPDATE NOWAIT: bloquea la fila o falla inmediatamente
+    SELECT u.estado_cuenta, p.nombre_plan
+    INTO   v_estado, v_plan_act
+    FROM   USUARIOS u
+    JOIN   PLANES   p ON p.id_plan = u.id_plan
+    WHERE  u.id_usuario = 7
+    FOR UPDATE NOWAIT;   -- ← bloqueo exclusivo
 
-    -- Simular pausa larga donde otra sesión podría confirmar cambios
-    DBMS_LOCK.SLEEP(0);  -- sleep 0 = no pausa real, solo ilustrativo
+    DBMS_OUTPUT.PUT_LINE('[SESIÓN A] Fila bloqueada. Plan actual: '
+        || v_plan_act || ' | Estado: ' || v_estado);
 
-    SELECT estado_cuenta INTO v_estado_2
-    FROM   USUARIOS WHERE id_usuario = 1;
+    -- Cambiar plan a Premium (id=3)
+    UPDATE USUARIOS SET id_plan = 3 WHERE id_usuario = 7;
 
-    DBMS_OUTPUT.PUT_LINE('[' || v_nivel || '] Primera lectura  : ' || v_estado_1);
-    DBMS_OUTPUT.PUT_LINE('[' || v_nivel || '] Segunda lectura  : ' || v_estado_2);
-    DBMS_OUTPUT.PUT_LINE(
-        '[' || v_nivel || '] ¿Lectura no repetible posible?: SÍ'
-    );
-
-    COMMIT;
-
-    -- SERIALIZABLE: ambas lecturas siempre devuelven el mismo valor
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-    SELECT estado_cuenta INTO v_estado_1
-    FROM   USUARIOS WHERE id_usuario = 1;
-
-    SELECT estado_cuenta INTO v_estado_2
-    FROM   USUARIOS WHERE id_usuario = 1;
-
-    DBMS_OUTPUT.PUT_LINE('[SERIALIZABLE] Primera lectura  : ' || v_estado_1);
-    DBMS_OUTPUT.PUT_LINE('[SERIALIZABLE] Segunda lectura  : ' || v_estado_2);
-    DBMS_OUTPUT.PUT_LINE(
-        '[SERIALIZABLE] ¿Lectura no repetible posible?: NO (snapshot fijo)'
-    );
-
-    COMMIT;
-
+    DBMS_OUTPUT.PUT_LINE('[SESIÓN A] UPDATE aplicado. Esperando COMMIT...');
+    -- *** NO ejecutar COMMIT aún — dejar la sesión en este estado ***
+    -- COMMIT;
 EXCEPTION
+    WHEN recurso_bloqueado THEN
+        DBMS_OUTPUT.PUT_LINE('[SESIÓN A] ERROR ORA-00054: fila ocupada por otra sesión.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error en demostración niveles: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('[SESIÓN A] ERROR: ' || SQLERRM);
 END;
 /
-
--- 5. ESTRATEGIA ANTI-DEADLOCK
--- Problema: dos sesiones pueden causar deadlock si bloquean filas en orden
---           inverso. Ejemplo real en QuindioFlix:
---
---   Sesión A: FOR UPDATE en usuario 1, luego usuario 2
---   Sesión B: FOR UPDATE en usuario 2, luego usuario 1
---   → Ciclo de espera → deadlock → Oracle cancela una de las dos.
---
--- Solución implementada en SP_TRANSFERIR_PERFIL:
---   Siempre bloquear el usuario con id MENOR primero, ambas sesiones
---   siguen el mismo orden → no puede formarse ciclo.
-
-
--- Bloque ilustrativo de detección y recuperación de deadlock
-DECLARE
-    v_dummy NUMBER;
-BEGIN
-    -- Simulación: intentar bloquear dos filas en el orden "seguro"
-    SAVEPOINT sp_anti_deadlock;
-
-    -- Orden fijo: id menor primero
-    SELECT id_usuario INTO v_dummy FROM USUARIOS WHERE id_usuario = 1 FOR UPDATE NOWAIT;
-    SELECT id_usuario INTO v_dummy FROM USUARIOS WHERE id_usuario = 2 FOR UPDATE NOWAIT;
-
-    -- Operaciones sobre ambas filas...
-    DBMS_OUTPUT.PUT_LINE('Anti-deadlock: bloqueos obtenidos en orden seguro (1 → 2).');
-
-    COMMIT;
-
-EXCEPTION
-    WHEN OTHERS THEN
-        -- ORA-00054: recurso ocupado o ORA-00060: deadlock detectado
-        ROLLBACK TO sp_anti_deadlock;
-        IF SQLCODE = -54 THEN
-            DBMS_OUTPUT.PUT_LINE('Recurso ocupado por otra sesión. Reintente más tarde.');
-        ELSIF SQLCODE = -60 THEN
-            DBMS_OUTPUT.PUT_LINE('Deadlock detectado. Transacción revertida al savepoint.');
-        ELSE
-            DBMS_OUTPUT.PUT_LINE('Error inesperado: ' || SQLERRM);
-        END IF;
-END;
-/
-
--- 6. BLOQUE DE PRUEBA COMPLETO (opcional – ejecutar independientemente)
 
 /*
--- Prueba SP_PROCESAR_PAGO (exitoso)
+───────────────────────────────────────────────────────────────
+SESIÓN B — Intenta cambiar el mismo usuario 7 a Básico
+(ejecutar MIENTRAS la Sesión A aún no hizo COMMIT)
+───────────────────────────────────────────────────────────────
+*/
+
+-- BLOQUE SESIÓN B:
 DECLARE
-    v_id_pago NUMBER;
+    v_estado    USUARIOS.estado_cuenta%TYPE;
+    v_plan_act  PLANES.nombre_plan%TYPE;
+
+    recurso_bloqueado EXCEPTION;
+    PRAGMA EXCEPTION_INIT(recurso_bloqueado, -54);
 BEGIN
-    SP_PROCESAR_PAGO(
-        p_id_usuario => 11,
-        p_monto      => 14900,
-        p_metodo     => 'NEQUI',
-        p_estado     => 'EXITOSO',
-        p_id_pago    => v_id_pago
-    );
-    DBMS_OUTPUT.PUT_LINE('Pago generado: ' || v_id_pago);
+    DBMS_OUTPUT.PUT_LINE('[SESIÓN B] Intentando bloquear usuario 7...');
+
+    SELECT u.estado_cuenta, p.nombre_plan
+    INTO   v_estado, v_plan_act
+    FROM   USUARIOS u
+    JOIN   PLANES   p ON p.id_plan = u.id_plan
+    WHERE  u.id_usuario = 7
+    FOR UPDATE NOWAIT;   -- ← falla si la Sesión A ya tiene el bloqueo
+
+    DBMS_OUTPUT.PUT_LINE('[SESIÓN B] Fila bloqueada. Aplicando cambio...');
+    UPDATE USUARIOS SET id_plan = 1 WHERE id_usuario = 7;
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('[SESIÓN B] ✔ Cambio aplicado.');
+EXCEPTION
+    WHEN recurso_bloqueado THEN
+        -- ────────────────────────────────────────────────────────────────
+        -- RESULTADO ESPERADO: ORA-00054 — resource busy and acquire with
+        -- NOWAIT specified or timeout expired.
+        -- Oracle bloqueó la fila para Sesión A; Sesión B recibe el error
+        -- inmediatamente (no espera) gracias a NOWAIT.
+        -- ────────────────────────────────────────────────────────────────
+        DBMS_OUTPUT.PUT_LINE(
+            '[SESIÓN B] ✖ ORA-00054: la fila del usuario 7 está bloqueada '
+            || 'por Sesión A. Reintente después del COMMIT de A.');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('[SESIÓN B] ERROR inesperado: ' || SQLERRM);
 END;
 /
 
--- Prueba SP_PROCESAR_PAGO (fallido sobre cuenta que ya venció > 30 días)
+-- Luego en Sesión A:
+-- COMMIT;
+-- (La Sesión B puede ejecutar su bloque de nuevo y tendrá éxito)
+
+
+-- =============================================================================
+-- BLOQUES DE PRUEBA
+-- =============================================================================
+/*
+-- Prueba TXN-1: registro exitoso
 DECLARE
-    v_id_pago NUMBER;
+    v_id NUMBER;
 BEGIN
-    SP_PROCESAR_PAGO(
-        p_id_usuario => 12,    -- usuario con pagos fallidos en los datos de prueba
-        p_monto      => 14900,
-        p_metodo     => 'PSE',
-        p_estado     => 'FALLIDO',
-        p_id_pago    => v_id_pago
+    SP_REGISTRAR_USUARIO_COMPLETO(
+        p_nombre       => 'Prueba Entrega Tres',
+        p_email        => 'prueba.e3@quindioflix.co',
+        p_telefono     => '3001110000',
+        p_fnac         => DATE '1998-03-20',
+        p_ciudad       => 'Armenia',
+        p_id_plan      => 2,
+        p_id_referidor => NULL,
+        p_metodo_pago  => 'NEQUI',
+        p_id_usuario   => v_id
+    );
+    DBMS_OUTPUT.PUT_LINE('ID generado: ' || v_id);
+END;
+/
+
+-- Prueba TXN-1: rollback por email duplicado
+DECLARE
+    v_id NUMBER;
+BEGIN
+    SP_REGISTRAR_USUARIO_COMPLETO(
+        p_nombre       => 'Email Duplicado',
+        p_email        => 'c.torres@gmail.com',   -- ya existe
+        p_telefono     => '3001110001',
+        p_fnac         => DATE '1990-01-01',
+        p_ciudad       => 'Bogota',
+        p_id_plan      => 1,
+        p_id_referidor => NULL,
+        p_metodo_pago  => 'PSE',
+        p_id_usuario   => v_id
     );
 END;
 /
 
--- Prueba SP_RENOVACION_MASIVA
-EXEC SP_RENOVACION_MASIVA(p_batch_size => 10);
+-- Prueba TXN-2
+EXEC SP_RENOVACION_MENSUAL(p_batch_size => 10);
 
--- Prueba SP_TRANSFERIR_PERFIL
--- Mover perfil 20 (usuario 20) al usuario 14 que tiene cupo
-EXEC SP_TRANSFERIR_PERFIL(p_id_perfil => 20, p_id_usuario_dest => 14);
+-- Prueba TXN-3 (eliminar usuario de prueba)
+EXEC SP_ELIMINAR_CUENTA(p_id_usuario => 31, p_confirmacion => 'CONFIRMAR');
 
--- Verificar auditoría
-SELECT tabla_afectada, operacion, descripcion, TO_CHAR(fecha_evento,'DD/MM HH24:MI:SS') AS ts
-FROM   AUDITORIA_QUINDIOFLIX
-ORDER BY fecha_evento DESC
-FETCH FIRST 30 ROWS ONLY;
+-- Prueba TXN-3: sin palabra de confirmación (debe rechazar)
+EXEC SP_ELIMINAR_CUENTA(p_id_usuario => 1, p_confirmacion => 'SI');
+
+-- Ver auditoría
+SELECT * FROM AUDITORIA_QUINDIOFLIX ORDER BY fecha_evento DESC FETCH FIRST 20 ROWS ONLY;
 */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertCircle, Check, X, Eye, Filter, Loader2 } from 'lucide-react';
+import { AlertCircle, Check, X, Eye, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { reportesContenidoAPI } from '@/lib/api';
@@ -97,14 +97,14 @@ export default function ModerationPage() {
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Resueltos</p>
             <p className="text-3xl font-bold text-green-500">
-              {reports.filter((r) => r.estado === 'Resuelto').length}
+              {reports.filter((r) => r.estado === 'resuelto').length}
             </p>
           </div>
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Tasa de resolución</p>
             <p className="text-3xl font-bold text-accent">
               {Math.round(
-                (reports.filter((r) => r.estado === 'Resuelto').length / reports.length) * 100
+                (reports.filter((r) => r.estado === 'resuelto').length / (reports.length || 1)) * 100
               )}
               %
             </p>

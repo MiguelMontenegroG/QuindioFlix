@@ -42,7 +42,7 @@ class UsuarioBase(BaseModel):
     fecha_nacimiento: Optional[date] = None
     ciudad: str = Field("", max_length=80)
     id_plan: int
-    codigo_referido: Optional[str] = None
+    codigo_referido: Optional[int] = None
 
 
 class UsuarioCreate(UsuarioBase):
@@ -66,6 +66,7 @@ class Usuario(UsuarioBase):
     estado_cuenta: str = "ACTIVO"
     fecha_registro: datetime
     es_admin: bool = False
+    role: str = Field(default="usuario", pattern=r"^(admin|analista|soporte|contenido|usuario)$")
 
     class Config:
         from_attributes = True
@@ -81,6 +82,12 @@ class PerfilBase(BaseModel):
 
 class PerfilCreate(PerfilBase):
     pass
+
+
+class PerfilCreateRequest(BaseModel):
+    nombre_perfil: str = Field(..., max_length=50)
+    avatar: str = "default.png"
+    tipo: str = Field(..., pattern=r"^(ADULTO|INFANTIL)$")
 
 
 class PerfilUpdate(BaseModel):
@@ -106,6 +113,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     id_usuario: Optional[int] = None
     es_admin: bool = False
+    role: str = "usuario"
 
 
 class LoginResponse(Token):
@@ -120,6 +128,7 @@ class RegistroResponse(BaseModel):
 class CambiarPlanRequest(BaseModel):
     id_usuario: int
     id_plan: int
+    metodo_pago: str = Field(default="PSE", pattern=r"^(TARJETA_CREDITO|TARJETA_DEBITO|PSE|NEQUI|DAVIPLATA)$")
 
 
 class CambiarEstadoRequest(BaseModel):

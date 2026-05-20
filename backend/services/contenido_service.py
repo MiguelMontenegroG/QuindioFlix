@@ -1,9 +1,10 @@
 """Servicio CRUD para Catalogo, Temporadas y Episodios."""
 
-from typing import Optional
+import oracledb
 
-from database import get_connection, release_connection
-from schemas.contenido import (
+from ..database import get_connection, release_connection, fq
+from ..oracle_errors import handle_oracle_error
+from ..schemas.contenido import (
     Contenido, ContenidoCreate, ContenidoUpdate,
     Temporada, TemporadaCreate, TemporadaUpdate,
     Episodio, EpisodioCreate, EpisodioUpdate,
@@ -30,7 +31,7 @@ def _row_to_contenido(row) -> Contenido:
 
 def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
     """Lista contenido con filtros opcionales y paginacion."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
 
@@ -45,7 +46,7 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
             binds["categoria"] = params.categoria
         if params.genero:
             where_clauses.append(
-                "EXISTS (SELECT 1 FROM CONTENIDO_GENERO cg WHERE cg.id_contenido = c.id_contenido AND cg.id_genero = :genero)"
+                f"EXISTS (SELECT 1 FROM {fq('CONTENIDO_GENERO')} cg WHERE cg.id_contenido = c.id_contenido AND cg.id_genero = :genero)"
             )
             binds["genero"] = params.genero
         if params.anio:
@@ -57,42 +58,44 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-        # Total
-        cursor.execute(f"SELECT COUNT(*) FROM CONTENIDO c WHERE {where_sql}", binds)
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('CONTENIDO')} c WHERE {where_sql}", binds)
         total = cursor.fetchone()[0]
 
-        # Paginacion
         offset = (params.pagina - 1) * params.por_pagina
         sql = f"""
-            SELECT * FROM (
-                SELECT c.*, ROWNUM rn FROM CONTENIDO c WHERE {where_sql}
-                ORDER BY c.fecha_agregado DESC
-            ) WHERE rn > :offset AND rn <= :limit
+            SELECT c.id_contenido, c.titulo, c.anio_lanzamiento, c.duracion,
+                   c.sinopsis, c.clasificacion_edad, c.fecha_agregado, c.es_original,
+                   c.id_categoria, c.id_empleado_resp
+            FROM {fq('CONTENIDO')} c
+            WHERE {where_sql}
+            ORDER BY c.fecha_agregado DESC
+            OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
         """
         binds["offset"] = offset
-        binds["limit"] = offset + params.por_pagina
+        binds["limit"] = params.por_pagina
 
         cursor.execute(sql, binds)
-        resultados = []
-        for row in cursor:
-            resultados.append(_row_to_contenido(row[:10]))  # ultimo elemento es ROWNUM
+        resultados = [_row_to_contenido(row) for row in cursor]
 
         cursor.close()
         return resultados, total
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
     """Obtiene un contenido por ID con sus generos."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT id_contenido, titulo, anio_lanzamiento, duracion,
+            f"""SELECT id_contenido, titulo, anio_lanzamiento, duracion,
                       sinopsis, clasificacion_edad, fecha_agregado, es_original,
                       id_categoria, id_empleado_resp
-               FROM CONTENIDO WHERE id_contenido = :1""", [id_contenido]
+               FROM {fq('CONTENIDO')} WHERE id_contenido = :1""",
+            [id_contenido]
         )
         row = cursor.fetchone()
         if not row:
@@ -101,19 +104,17 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
 
         contenido = _row_to_contenido(row)
 
-        # Obtener generos
         cursor.execute(
-            """SELECT g.id_genero, g.nombre_genero
-               FROM GENEROS g
-               JOIN CONTENIDO_GENERO cg ON cg.id_genero = g.id_genero
-               WHERE cg.id_contenido = :1""", [id_contenido]
+            f"""SELECT g.id_genero, g.nombre_genero
+               FROM {fq('GENEROS')} g
+               JOIN {fq('CONTENIDO_GENERO')} cg ON cg.id_genero = g.id_genero
+               WHERE cg.id_contenido = :1""",
+            [id_contenido]
         )
-        generos = [Genero(id_genero=r[0], nombre_genero=r[1]) for r in cursor]
-        contenido.generos = generos
+        contenido.generos = [Genero(id_genero=r[0], nombre_genero=r[1]) for r in cursor]
 
-        # Obtener categoria
         cursor.execute(
-            "SELECT id_categoria, nombre_categoria, descripcion FROM CATEGORIAS WHERE id_categoria = :1",
+            f"SELECT id_categoria, nombre_categoria, descripcion FROM {fq('CATEGORIAS')} WHERE id_categoria = :1",
             [contenido.id_categoria]
         )
         cat_row = cursor.fetchone()
@@ -123,19 +124,29 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
                 descripcion=cat_row[2]
             )
 
+        cursor.execute(
+            f"SELECT ROUND(AVG(estrellas), 2) FROM {fq('CALIFICACIONES')} WHERE id_contenido = :1",
+            [id_contenido]
+        )
+        avg_row = cursor.fetchone()
+        contenido.calificacion_promedio = float(avg_row[0]) if avg_row and avg_row[0] is not None else None
+
         cursor.close()
+        contenido.temporadas = listar_temporadas(id_contenido)
         return contenido
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def crear_contenido(data: ContenidoCreate) -> Contenido:
     """Crea un nuevo contenido y asigna generos."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO CONTENIDO (id_contenido, titulo, anio_lanzamiento, duracion,
+            f"""INSERT INTO {fq('CONTENIDO')} (id_contenido, titulo, anio_lanzamiento, duracion,
                sinopsis, clasificacion_edad, es_original, id_categoria, id_empleado_resp)
                VALUES (seq_contenido.NEXTVAL, :1, :2, :3, :4, :5, :6, :7, :8)
                RETURNING id_contenido INTO :9""",
@@ -146,26 +157,25 @@ def crear_contenido(data: ContenidoCreate) -> Contenido:
         )
         id_contenido = cursor.fetchone()[0]
 
-        # Asignar generos
         for gen_id in data.generos:
             cursor.execute(
-                "INSERT INTO CONTENIDO_GENERO (id_contenido, id_genero) VALUES (:1, :2)",
+                f"INSERT INTO {fq('CONTENIDO_GENERO')} (id_contenido, id_genero) VALUES (:1, :2)",
                 [id_contenido, gen_id]
             )
 
         conn.commit()
         cursor.close()
         return obtener_contenido_por_id(id_contenido)
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def actualizar_contenido(id_contenido: int, data: ContenidoUpdate) -> Contenido | None:
     """Actualiza un contenido existente."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
         updates = []
@@ -175,60 +185,59 @@ def actualizar_contenido(id_contenido: int, data: ContenidoUpdate) -> Contenido 
                        "clasificacion_edad", "es_original", "id_categoria", "id_empleado_resp"]:
             value = getattr(data, field, None)
             if value is not None:
-                col = field
-                updates.append(f"{col} = :{field}")
+                updates.append(f"{field} = :{field}")
                 binds[field] = value
 
         if updates:
-            sql = f"UPDATE CONTENIDO SET {', '.join(updates)} WHERE id_contenido = :id"
+            sql = f"UPDATE {fq('CONTENIDO')} SET {', '.join(updates)} WHERE id_contenido = :id"
             cursor.execute(sql, binds)
 
-        # Actualizar generos si se enviaron
         if data.generos is not None:
-            cursor.execute("DELETE FROM CONTENIDO_GENERO WHERE id_contenido = :1", [id_contenido])
+            cursor.execute(f"DELETE FROM {fq('CONTENIDO_GENERO')} WHERE id_contenido = :1", [id_contenido])
             for gen_id in data.generos:
                 cursor.execute(
-                    "INSERT INTO CONTENIDO_GENERO (id_contenido, id_genero) VALUES (:1, :2)",
+                    f"INSERT INTO {fq('CONTENIDO_GENERO')} (id_contenido, id_genero) VALUES (:1, :2)",
                     [id_contenido, gen_id]
                 )
 
         conn.commit()
         cursor.close()
         return obtener_contenido_por_id(id_contenido)
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def eliminar_contenido(id_contenido: int) -> bool:
     """Elimina un contenido (CASCADE elimina generos, temporadas, episodios)."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM CONTENIDO WHERE id_contenido = :1", [id_contenido])
+        cursor.execute(f"DELETE FROM {fq('CONTENIDO')} WHERE id_contenido = :1", [id_contenido])
         deleted = cursor.rowcount
         conn.commit()
         cursor.close()
         return deleted > 0
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def listar_temporadas(id_contenido: int) -> list[Temporada]:
     """Lista temporadas de un contenido."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT id_temporada, id_contenido, numero_temporada,
+            f"""SELECT id_temporada, id_contenido, numero_temporada,
                       titulo_temporada, anio
-               FROM TEMPORADAS WHERE id_contenido = :1
-               ORDER BY numero_temporada""", [id_contenido]
+               FROM {fq('TEMPORADAS')} WHERE id_contenido = :1
+               ORDER BY numero_temporada""",
+            [id_contenido]
         )
         temporadas = []
         for row in cursor:
@@ -237,13 +246,13 @@ def listar_temporadas(id_contenido: int) -> list[Temporada]:
                 numero_temporada=row[2], titulo_temporada=row[3], anio=row[4],
                 episodios=[]
             )
-            # Obtener episodios de esta temporada
             cursor2 = conn.cursor()
             cursor2.execute(
-                """SELECT id_episodio, id_temporada, numero_episodio,
+                f"""SELECT id_episodio, id_temporada, numero_episodio,
                           titulo_episodio, duracion, sinopsis_ep
-                   FROM EPISODIOS WHERE id_temporada = :1
-                   ORDER BY numero_episodio""", [temp.id_temporada]
+                   FROM {fq('EPISODIOS')} WHERE id_temporada = :1
+                   ORDER BY numero_episodio""",
+                [temp.id_temporada]
             )
             for erow in cursor2:
                 temp.episodios.append(Episodio(
@@ -256,17 +265,19 @@ def listar_temporadas(id_contenido: int) -> list[Temporada]:
 
         cursor.close()
         return temporadas
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def crear_temporada(data: TemporadaCreate) -> Temporada:
     """Crea una nueva temporada."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO TEMPORADAS (id_temporada, id_contenido, numero_temporada,
+            f"""INSERT INTO {fq('TEMPORADAS')} (id_temporada, id_contenido, numero_temporada,
                titulo_temporada, anio)
                VALUES (seq_temporadas.NEXTVAL, :1, :2, :3, :4)
                RETURNING id_temporada INTO :5""",
@@ -282,20 +293,20 @@ def crear_temporada(data: TemporadaCreate) -> Temporada:
             titulo_temporada=data.titulo_temporada, anio=data.anio,
             episodios=[]
         )
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def crear_episodio(data: EpisodioCreate) -> Episodio:
     """Crea un nuevo episodio."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO EPISODIOS (id_episodio, id_temporada, numero_episodio,
+            f"""INSERT INTO {fq('EPISODIOS')} (id_episodio, id_temporada, numero_episodio,
                titulo_episodio, duracion, sinopsis_ep)
                VALUES (seq_episodios.NEXTVAL, :1, :2, :3, :4, :5)
                RETURNING id_episodio INTO :6""",
@@ -311,34 +322,55 @@ def crear_episodio(data: EpisodioCreate) -> Episodio:
             titulo_episodio=data.titulo_episodio,
             duracion=data.duracion, sinopsis_ep=data.sinopsis_ep
         )
-    except Exception:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def listar_categorias() -> list[Categoria]:
     """Lista todas las categorias."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id_categoria, nombre_categoria, descripcion FROM CATEGORIAS ORDER BY nombre_categoria")
+        cursor.execute(f"SELECT id_categoria, nombre_categoria, descripcion FROM {fq('CATEGORIAS')} ORDER BY nombre_categoria")
         cats = [Categoria(id_categoria=r[0], nombre_categoria=r[1], descripcion=r[2]) for r in cursor]
         cursor.close()
         return cats
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
 
 
 def listar_generos() -> list[Genero]:
     """Lista todos los generos."""
-    conn = get_connection()
+    conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id_genero, nombre_genero FROM GENEROS ORDER BY nombre_genero")
+        cursor.execute(f"SELECT id_genero, nombre_genero FROM {fq('GENEROS')} ORDER BY nombre_genero")
         gens = [Genero(id_genero=r[0], nombre_genero=r[1]) for r in cursor]
         cursor.close()
         return gens
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "contenido")
+
+
+def contenido_recomendado(id_perfil: int) -> Contenido | None:
+    """Obtiene contenido recomendado para un perfil usando FN_CONTENIDO_RECOMENDADO."""
+    conn = get_connection("contenido")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT {fq('FN_CONTENIDO_RECOMENDADO')}(:1) FROM DUAL", [id_perfil])
+        id_contenido = cursor.fetchone()[0]
+        cursor.close()
+        if id_contenido == -1:
+            return None
+        return obtener_contenido_por_id(int(id_contenido))
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
+    finally:
+        release_connection(conn, "contenido")

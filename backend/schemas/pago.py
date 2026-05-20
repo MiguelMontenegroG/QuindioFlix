@@ -14,7 +14,7 @@ class PagoBase(BaseModel):
 
 
 class PagoCreate(PagoBase):
-    pass
+    estado_pago: str = Field(default="PENDIENTE", pattern=r"^(EXITOSO|FALLIDO|PENDIENTE|REEMBOLSADO)$")
 
 
 class PagoUpdateEstado(BaseModel):

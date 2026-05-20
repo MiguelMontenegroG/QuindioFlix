@@ -35,8 +35,16 @@ export function useReproduccion({
   const [error, setError] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
 
-  const intervalRef = useRef<NodeJS.Timeout>()
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const ultimoReporteRef = useRef(0)
+
+  const mapDispositivo = (value: string) => {
+    const normalizado = value.toLowerCase()
+    if (normalizado === 'mobile' || normalizado === 'celular') return 'CELULAR'
+    if (normalizado === 'tablet') return 'TABLET'
+    if (normalizado === 'tv') return 'TV'
+    return 'COMPUTADOR'
+  }
 
   /**
    * Inicia la reproducción: registra en Oracle
@@ -48,9 +56,9 @@ export function useReproduccion({
         id_perfil: idPerfil,
         id_contenido: idContenido,
         id_episodio: idEpisodio,
-        dispositivo,
+        dispositivo: mapDispositivo(dispositivo),
       })
-      setReproduccionId(response.id)
+      setReproduccionId(response.id_reproduccion ?? response.id)
       setIsReproduciendo(true)
       setIsReady(true)
     } catch (err: any) {

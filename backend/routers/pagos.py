@@ -1,12 +1,15 @@
 ﻿"""Routers de pagos y planes."""
 
-from fastapi import APIRouter, HTTPException
+import oracledb
+from fastapi import APIRouter, HTTPException, Depends
 
-from database import get_connection, release_connection
-from schemas.usuario import CambiarPlanRequest, Plan, Usuario
-from schemas.pago import Pago, PagoCreate, PagoUpdateEstado
-from services.plan_service import (
-    listar_planes, obtener_plan, cambiar_plan,
+from backend.database import get_connection, release_connection, fq
+from backend.dependencies import require_roles
+from backend.oracle_errors import handle_oracle_error
+from backend.schemas.usuario import Plan
+from backend.schemas.pago import Pago, PagoCreate, PagoUpdateEstado
+from backend.services.plan_service import (
+    listar_planes, obtener_plan,
     registrar_pago, pagos_por_usuario, calcular_monto,
 )
 
@@ -15,14 +18,14 @@ router = APIRouter(prefix="/pagos", tags=["Pagos y Planes"])
 
 # ==================== LISTAR TODOS LOS PAGOS (admin) ====================
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_roles("soporte"))])
 def listar_todos_pagos(
     estado: str | None = None,
     pagina: int = 1,
     por_pagina: int = 20,
 ):
     """Lista todos los pagos con filtro opcional por estado (admin)."""
-    conn = get_connection()
+    conn = get_connection("soporte")
     try:
         cursor = conn.cursor()
         where = ""
@@ -31,21 +34,21 @@ def listar_todos_pagos(
             where = "WHERE p.estado_pago = :estado"
             binds["estado"] = estado
 
-        cursor.execute(f"SELECT COUNT(*) FROM PAGOS p {where}", binds)
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('PAGOS')} p {where}", binds)
         total = cursor.fetchone()[0]
 
         offset = (pagina - 1) * por_pagina
         sql = f"""
-            SELECT * FROM (
-                SELECT p.*, u.nombre AS usuario_nombre, u.email AS usuario_email, ROWNUM rn
-                FROM PAGOS p
-                JOIN USUARIOS u ON u.id_usuario = p.id_usuario
-                {where}
-                ORDER BY p.fecha_pago DESC
-            ) WHERE rn > :offset AND rn <= :limit
+            SELECT p.id_pago, p.id_usuario, p.fecha_pago, p.monto, p.metodo_pago, p.estado_pago,
+                   p.fecha_vencimiento, u.nombre AS usuario_nombre, u.email AS usuario_email
+            FROM {fq('PAGOS')} p
+            JOIN {fq('USUARIOS')} u ON u.id_usuario = p.id_usuario
+            {where}
+            ORDER BY p.fecha_pago DESC
+            OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
         """
         binds["offset"] = offset
-        binds["limit"] = offset + por_pagina
+        binds["limit"] = por_pagina
         cursor.execute(sql, binds)
 
         columns = [desc[0] for desc in cursor.description]
@@ -53,7 +56,7 @@ def listar_todos_pagos(
         cursor.close()
         return {"data": pagos, "total": total, "pagina": pagina, "por_pagina": por_pagina}
     finally:
-        release_connection(conn)
+        release_connection(conn, "soporte")
 
 
 # ==================== PLANES ====================
@@ -73,16 +76,6 @@ def obtener_plan_endpoint(id_plan: int):
     return plan
 
 
-@router.post("/cambiar-plan", response_model=dict)
-def cambiar_plan_endpoint(data: CambiarPlanRequest):
-    """Cambia el plan de un usuario usando SP_CAMBIAR_PLAN."""
-    try:
-        usuario = cambiar_plan(data.id_usuario, data.id_plan)
-        return {"mensaje": "Plan actualizado exitosamente", "usuario": usuario}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 # ==================== PAGOS ====================
 
 @router.get("/usuarios/{id_usuario}", response_model=list[Pago])
@@ -94,10 +87,7 @@ def obtener_pagos_usuario(id_usuario: int):
 @router.post("")
 def crear_pago(data: PagoCreate):
     """Registra un nuevo pago."""
-    try:
-        return registrar_pago(data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return registrar_pago(data)
 
 
 @router.put("/{id_pago}/estado")
@@ -105,10 +95,10 @@ def actualizar_estado_pago(id_pago: int, data: PagoUpdateEstado):
     """Actualiza el estado de un pago."""
     conn = None
     try:
-        conn = get_connection()
+        conn = get_connection("soporte")
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE PAGOS SET estado_pago = :1 WHERE id_pago = :2",
+            f"UPDATE {fq('PAGOS')} SET estado_pago = :1 WHERE id_pago = :2",
             [data.estado, id_pago]
         )
         if cursor.rowcount == 0:
@@ -119,18 +109,16 @@ def actualizar_estado_pago(id_pago: int, data: PagoUpdateEstado):
         return {"mensaje": f"Estado del pago actualizado a {data.estado}"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except oracledb.DatabaseError as e:
+        conn.rollback()
+        handle_oracle_error(e)
     finally:
         if conn:
-            release_connection(conn)
+            release_connection(conn, "soporte")
 
 
 @router.get("/calcular-monto/{id_usuario}")
 def calcular_monto_endpoint(id_usuario: int):
     """Calcula el monto a pagar usando FN_CALCULAR_MONTO."""
-    try:
-        monto = calcular_monto(id_usuario)
-        return {"id_usuario": id_usuario, "monto": monto}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    monto = calcular_monto(id_usuario)
+    return {"id_usuario": id_usuario, "monto": monto}

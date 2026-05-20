@@ -18,9 +18,6 @@ class ConsumoPorCiudad(BaseModel):
     ciudad: str
     total_usuarios: int
     ingresos_totales: float
-    plan_basico: int
-    plan_estandar: int
-    plan_premium: int
 
 
 class ReproduccionesPorDispositivo(BaseModel):

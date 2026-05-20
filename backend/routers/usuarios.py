@@ -1,26 +1,23 @@
-"""Routers de usuarios: perfiles, favoritos, calificaciones, referidos."""
+"""Routers de usuarios: perfil, plan, reporte y perfiles."""
 
-from fastapi import APIRouter, HTTPException
+import oracledb
+from fastapi import APIRouter, HTTPException, Query, Depends
 
-from database import get_connection, release_connection
-from schemas.usuario import (
-    Usuario, UsuarioUpdate, Perfil, PerfilCreate, PerfilUpdate,
-    CambiarEstadoRequest,
+from ..database import get_connection, release_connection, fq
+from ..dependencies import require_roles
+from ..oracle_errors import handle_oracle_error
+from ..schemas.usuario import (
+    Usuario, UsuarioUpdate, Perfil, PerfilCreateRequest,
+    CambiarPlanRequest,
 )
-from schemas.reproduccion import (
-    Favorito, FavoritoCreate, Calificacion, CalificacionCreate,
-)
-from services.auth_service import obtener_usuario_por_id
-from services.reproduccion_service import (
-    agregar_favorito, eliminar_favorito, listar_favoritos,
-    crear_calificacion, calificaciones_por_contenido,
-    historial_reproducciones, reproducciones_en_progreso,
-)
+from ..services.auth_service import obtener_usuario_por_id
+from ..services.plan_service import cambiar_plan, pagos_por_usuario
+from ..services.usuario_service import eliminar_cuenta, reporte_consumo
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
 
-@router.get("/lista")
+@router.get("/lista", dependencies=[Depends(require_roles("admin"))])
 def listar_usuarios(
     estado: str | None = None,
     plan: int | None = None,
@@ -28,8 +25,8 @@ def listar_usuarios(
     pagina: int = 1,
     por_pagina: int = 100,
 ):
-    """Lista todos los usuarios (para admin/soporte)."""
-    conn = get_connection()
+    """Lista todos los usuarios (admin)."""
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         where_parts = []
@@ -49,47 +46,41 @@ def listar_usuarios(
         if where_parts:
             where = "WHERE " + " AND ".join(where_parts)
 
-        cursor.execute(f"SELECT COUNT(*) FROM USUARIOS u {where}", binds)
+        cursor.execute(f"SELECT COUNT(*) FROM {fq('USUARIOS')} u {where}", binds)
         total = cursor.fetchone()[0]
 
         offset = (pagina - 1) * por_pagina
         cursor.execute(
-            f"""SELECT * FROM (
-                SELECT u.*, p.nombre_plan, ROWNUM rn
-                FROM USUARIOS u
-                LEFT JOIN PLANES p ON p.id_plan = u.id_plan
-                {where}
-                ORDER BY u.id_usuario
-            ) WHERE rn > :offset AND rn <= :limit""",
-            {**binds, "offset": offset, "limit": offset + por_pagina}
+            f"""SELECT u.id_usuario, u.nombre, u.email, u.telefono, u.ciudad,
+                      u.fecha_nacimiento, u.id_plan, u.estado_cuenta, u.fecha_registro,
+                      p.nombre_plan, NVL(u.es_admin, 'N')
+               FROM {fq('USUARIOS')} u
+               LEFT JOIN {fq('PLANES')} p ON p.id_plan = u.id_plan
+               {where}
+               ORDER BY u.id_usuario
+               OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY""",
+            {**binds, "offset": offset, "limit": por_pagina}
         )
 
-        columns = [desc[0] for desc in cursor.description]
         usuarios = []
         for r in cursor:
-            row = dict(zip(columns, r))
             usuarios.append({
-                "id": row["ID_USUARIO"],
-                "id_usuario": row["ID_USUARIO"],
-                "nombre": row["NOMBRE"],
-                "email": row["EMAIL"],
-                "telefono": row.get("TELEFONO"),
-                "ciudad": row.get("CIUDAD"),
-                "fecha_nacimiento": str(row["FECHA_NACIMIENTO"]) if row.get("FECHA_NACIMIENTO") else None,
-                "id_plan": row.get("ID_PLAN"),
-                "estado": (row["ESTADO_CUENTA"] or "").lower(),
-                "estado_cuenta": row.get("ESTADO_CUENTA"),
-                "fecha_registro": str(row["FECHA_REGISTRO"]) if row.get("FECHA_REGISTRO") else None,
-                "plan": {
-                    "id": row.get("ID_PLAN"),
-                    "nombre": row.get("NOMBRE_PLAN"),
-                } if row.get("NOMBRE_PLAN") else None,
-                "es_admin": row.get("ES_ADMIN") == "S",
+                "id_usuario": r[0],
+                "nombre": r[1],
+                "email": r[2],
+                "telefono": r[3],
+                "ciudad": r[4],
+                "fecha_nacimiento": str(r[5]) if r[5] else None,
+                "id_plan": r[6],
+                "estado_cuenta": r[7],
+                "fecha_registro": str(r[8]) if r[8] else None,
+                "plan": {"id": r[6], "nombre": r[9]} if r[9] else None,
+                "es_admin": r[10] == "S",
             })
         cursor.close()
         return {"data": usuarios, "total": total}
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
 @router.get("/{id_usuario}", response_model=Usuario)
@@ -104,7 +95,7 @@ def obtener(id_usuario: int):
 @router.put("/{id_usuario}", response_model=Usuario)
 def actualizar(id_usuario: int, data: UsuarioUpdate):
     """Actualiza datos de un usuario."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         updates = []
@@ -112,45 +103,48 @@ def actualizar(id_usuario: int, data: UsuarioUpdate):
         for field in ["nombre", "telefono", "ciudad", "id_plan"]:
             value = getattr(data, field, None)
             if value is not None:
-                col = field
-                updates.append(f"{col} = :{field}")
+                updates.append(f"{field} = :{field}")
                 binds[field] = value
         if updates:
-            sql = f"UPDATE USUARIOS SET {', '.join(updates)} WHERE id_usuario = :id"
+            sql = f"UPDATE {fq('USUARIOS')} SET {', '.join(updates)} WHERE id_usuario = :id"
             cursor.execute(sql, binds)
             conn.commit()
         cursor.close()
         return obtener_usuario_por_id(id_usuario)
-    except Exception as e:
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
-@router.put("/{id_usuario}/estado")
-def cambiar_estado(id_usuario: int, data: CambiarEstadoRequest):
-    """Cambia el estado de un usuario (ACTIVO/INACTIVO)."""
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE USUARIOS SET estado_cuenta = :1 WHERE id_usuario = :2",
-            [data.estado, id_usuario]
-        )
-        if cursor.rowcount == 0:
-            cursor.close()
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        conn.commit()
-        cursor.close()
-        return {"mensaje": f"Estado del usuario actualizado a {data.estado}"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        release_connection(conn)
+@router.put("/{id_usuario}/plan")
+def cambiar_plan_endpoint(id_usuario: int, data: CambiarPlanRequest):
+    """Cambia el plan de un usuario usando SP_CAMBIAR_PLAN."""
+    if id_usuario != data.id_usuario:
+        raise HTTPException(status_code=400, detail="El ID de usuario no coincide")
+    usuario = cambiar_plan(data.id_usuario, data.id_plan, data.metodo_pago)
+    return {"mensaje": "Plan actualizado exitosamente", "usuario": usuario}
+
+
+@router.delete("/{id_usuario}")
+def eliminar_usuario(id_usuario: int, confirmacion: str = Query("CONFIRMAR")):
+    """Elimina la cuenta de un usuario (SP_ELIMINAR_CUENTA)."""
+    eliminar_cuenta(id_usuario, confirmacion)
+    return {"mensaje": "Cuenta eliminada exitosamente"}
+
+
+@router.get("/{id_usuario}/reporte")
+def reporte_usuario(id_usuario: int, mes: int | None = None, anio: int | None = None):
+    """Obtiene el reporte de consumo via SP_REPORTE_CONSUMO."""
+    lineas = reporte_consumo(id_usuario, mes, anio)
+    return {"id_usuario": id_usuario, "lineas": lineas}
+
+
+@router.get("/{id_usuario}/pagos")
+def pagos_usuario(id_usuario: int):
+    """Obtiene el historial de pagos del usuario."""
+    return pagos_por_usuario(id_usuario)
 
 
 # ==================== PERFILES ====================
@@ -158,150 +152,43 @@ def cambiar_estado(id_usuario: int, data: CambiarEstadoRequest):
 @router.get("/{id_usuario}/perfiles", response_model=list[Perfil])
 def obtener_perfiles(id_usuario: int):
     """Obtiene los perfiles de un usuario."""
-    conn = get_connection()
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id_perfil, id_usuario, nombre_perfil, avatar, tipo FROM PERFILES WHERE id_usuario = :1 ORDER BY id_perfil",
+            f"SELECT id_perfil, id_usuario, nombre_perfil, avatar, tipo FROM {fq('PERFILES')} WHERE id_usuario = :1 ORDER BY id_perfil",
             [id_usuario]
         )
         perfiles = [Perfil(id_perfil=r[0], id_usuario=r[1], nombre_perfil=r[2], avatar=r[3], tipo=r[4]) for r in cursor]
         cursor.close()
         return perfiles
+    except oracledb.DatabaseError as e:
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
+        release_connection(conn, "admin")
 
 
-@router.post("/perfiles", response_model=Perfil, status_code=201)
-def crear_perfil(data: PerfilCreate):
-    """Crea un nuevo perfil."""
-    conn = get_connection()
+@router.post("/{id_usuario}/perfiles", response_model=Perfil, status_code=201)
+def crear_perfil(id_usuario: int, data: PerfilCreateRequest):
+    """Crea un nuevo perfil para un usuario."""
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO PERFILES (id_perfil, id_usuario, nombre_perfil, avatar, tipo)
+            f"""INSERT INTO {fq('PERFILES')} (id_perfil, id_usuario, nombre_perfil, avatar, tipo)
                VALUES (seq_perfiles.NEXTVAL, :1, :2, :3, :4)
                RETURNING id_perfil INTO :5""",
-            [data.id_usuario, data.nombre_perfil, data.avatar, data.tipo, cursor.var(int)]
+            [id_usuario, data.nombre_perfil, data.avatar, data.tipo, cursor.var(int)]
         )
         id_perfil = cursor.fetchone()[0]
         conn.commit()
         cursor.close()
-        return Perfil(id_perfil=id_perfil, id_usuario=data.id_usuario, nombre_perfil=data.nombre_perfil, avatar=data.avatar, tipo=data.tipo)
-    except Exception as e:
+        return Perfil(
+            id_perfil=id_perfil, id_usuario=id_usuario,
+            nombre_perfil=data.nombre_perfil, avatar=data.avatar, tipo=data.tipo
+        )
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        handle_oracle_error(e)
     finally:
-        release_connection(conn)
-
-
-@router.put("/perfiles/{id_perfil}", response_model=Perfil)
-def actualizar_perfil(id_perfil: int, data: PerfilUpdate):
-    """Actualiza un perfil."""
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        updates = []
-        binds = {"id": id_perfil}
-        for field in ["nombre_perfil", "avatar", "tipo"]:
-            value = getattr(data, field, None)
-            if value is not None:
-                updates.append(f"{field} = :{field}")
-                binds[field] = value
-        if updates:
-            cursor.execute(f"UPDATE PERFILES SET {', '.join(updates)} WHERE id_perfil = :id", binds)
-            conn.commit()
-        cursor.close()
-
-        cursor = conn.cursor()
-        cursor.execute("SELECT id_perfil, id_usuario, nombre_perfil, avatar, tipo FROM PERFILES WHERE id_perfil = :1", [id_perfil])
-        row = cursor.fetchone()
-        cursor.close()
-        if not row:
-            raise HTTPException(status_code=404, detail="Perfil no encontrado")
-        return Perfil(id_perfil=row[0], id_usuario=row[1], nombre_perfil=row[2], avatar=row[3], tipo=row[4])
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        release_connection(conn)
-
-
-@router.delete("/perfiles/{id_perfil}")
-def eliminar_perfil(id_perfil: int):
-    """Elimina un perfil."""
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM PERFILES WHERE id_perfil = :1", [id_perfil])
-        if cursor.rowcount == 0:
-            cursor.close()
-            raise HTTPException(status_code=404, detail="Perfil no encontrado")
-        conn.commit()
-        cursor.close()
-        return {"mensaje": "Perfil eliminado exitosamente"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        release_connection(conn)
-
-
-# ==================== FAVORITOS ====================
-
-@router.get("/{id_usuario}/favoritos", response_model=list[Favorito])
-def obtener_favoritos(id_perfil: int):
-    """Obtiene los favoritos de un perfil."""
-    return listar_favoritos(id_perfil)
-
-
-@router.post("/favoritos", response_model=Favorito, status_code=201)
-def agregar_favorito_endpoint(data: FavoritoCreate):
-    """Agrega un contenido a favoritos."""
-    try:
-        return agregar_favorito(data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.delete("/favoritos/{id_perfil}/{id_contenido}")
-def eliminar_favorito_endpoint(id_perfil: int, id_contenido: int):
-    """Elimina un contenido de favoritos."""
-    if eliminar_favorito(id_perfil, id_contenido):
-        return {"mensaje": "Favorito eliminado"}
-    raise HTTPException(status_code=404, detail="Favorito no encontrado")
-
-
-# ==================== CALIFICACIONES ====================
-
-@router.post("/calificaciones", response_model=Calificacion, status_code=201)
-def calificar(data: CalificacionCreate):
-    """Crea o actualiza una calificacion."""
-    try:
-        return crear_calificacion(data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.get("/contenido/{id_contenido}/calificaciones", response_model=list[Calificacion])
-def obtener_calificaciones(id_contenido: int):
-    """Obtiene calificaciones de un contenido."""
-    return calificaciones_por_contenido(id_contenido)
-
-
-# ==================== HISTORIAL ====================
-
-@router.get("/{id_usuario}/reproducciones", response_model=list)
-def obtener_historial(id_perfil: int):
-    """Obtiene historial de reproducciones de un perfil."""
-    return historial_reproducciones(id_perfil)
-
-
-@router.get("/{id_usuario}/reproducciones/en-progreso", response_model=list)
-def obtener_en_progreso(id_perfil: int):
-    """Obtiene reproducciones en progreso de un perfil."""
-    return reproducciones_en_progreso(id_perfil)
+        release_connection(conn, "admin")

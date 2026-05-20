@@ -6,7 +6,21 @@ import { authAPI } from '@/lib/api'
 import type { Usuario, Perfil } from '@/lib/types'
 
 // Funciones de mapeo backend -> frontend
-function mapUsuario(backendUser: any): Usuario {
+function mapUsuario(backendUser: any): {
+  id: any;
+  nombre: any;
+  email: any;
+  telefono: any;
+  ciudad: any;
+  fecha_nacimiento: any;
+  id_plan: any;
+  estado: "activo" | "inactivo";
+  codigo_referido: any;
+  fecha_registro: any;
+  es_admin: any;
+  role: any;
+} {
+  const esAdmin = backendUser.es_admin || backendUser.es_admin === 'S'
   return {
     id: backendUser.id_usuario ?? backendUser.id,
     nombre: backendUser.nombre,
@@ -18,8 +32,8 @@ function mapUsuario(backendUser: any): Usuario {
     estado: (backendUser.estado_cuenta || backendUser.estado || 'activo').toLowerCase() as 'activo' | 'inactivo',
     codigo_referido: backendUser.codigo_referido,
     fecha_registro: backendUser.fecha_registro,
-    es_admin: backendUser.es_admin === true || backendUser.es_admin === 'S',
-    rol_oracle: backendUser.rol_oracle,
+    es_admin: esAdmin,
+    role: backendUser.role || (esAdmin ? 'admin' : 'usuario'),
   }
 }
 
@@ -57,6 +71,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
+  const logout = useCallback(() => {
+    setUsuario(null)
+    setPerfiles([])
+    setPerfilActivoState(null)
+    setToken(null)
+
+    localStorage.removeItem('token')
+    localStorage.removeItem('usuario')
+    localStorage.removeItem('perfilActivo')
+
+    router.push('/login')
+  }, [router])
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const response = await authAPI.verificarToken()
+      const usuarioMapeado = mapUsuario(response.usuario)
+      const perfilesMapeados = (response.perfiles || []).map(mapPerfil)
+      setUsuario(usuarioMapeado)
+      setPerfiles(perfilesMapeados)
+      localStorage.setItem('usuario', JSON.stringify(usuarioMapeado))
+    } catch {
+      logout()
+    }
+  }, [logout])
+
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
     const storedUsuario = localStorage.getItem('usuario')
@@ -69,8 +109,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPerfilActivoState(JSON.parse(storedPerfil))
       }
     }
-    setIsLoading(false)
-  }, [])
+
+    const refresh = async () => {
+      if (storedToken) {
+        await refreshSession()
+      }
+      setIsLoading(false)
+    }
+
+    void refresh()
+  }, [refreshSession])
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await authAPI.login(email, password)
@@ -88,37 +136,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/perfiles')
   }, [router])
 
-  const logout = useCallback(() => {
-    setUsuario(null)
-    setPerfiles([])
-    setPerfilActivoState(null)
-    setToken(null)
-
-    localStorage.removeItem('token')
-    localStorage.removeItem('usuario')
-    localStorage.removeItem('perfilActivo')
-
-    router.push('/login')
-  }, [router])
-
   const setPerfilActivo = useCallback((perfil: Perfil) => {
     setPerfilActivoState(perfil)
     localStorage.setItem('perfilActivo', JSON.stringify(perfil))
     router.push('/inicio')
   }, [router])
 
-  const refreshSession = useCallback(async () => {
-    try {
-      const response = await authAPI.verificarToken()
-      const usuarioMapeado = mapUsuario(response.usuario)
-      const perfilesMapeados = (response.perfiles || []).map(mapPerfil)
-      setUsuario(usuarioMapeado)
-      setPerfiles(perfilesMapeados)
-      localStorage.setItem('usuario', JSON.stringify(usuarioMapeado))
-    } catch {
-      logout()
-    }
-  }, [logout])
 
   return (
     <AuthContext.Provider
