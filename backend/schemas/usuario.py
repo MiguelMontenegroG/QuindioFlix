@@ -1,9 +1,9 @@
 """Modelos Pydantic para Usuarios, Perfiles, Planes y Autenticacion."""
 
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Union
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ==================== PLANES ====================
@@ -42,7 +42,26 @@ class UsuarioBase(BaseModel):
     fecha_nacimiento: Optional[date] = None
     ciudad: str = Field("", max_length=80)
     id_plan: int
-    codigo_referido: Optional[int] = None
+    codigo_referido: Optional[Union[int, str]] = None
+
+    @field_validator("fecha_nacimiento", mode="before")
+    @classmethod
+    def blank_fecha_nacimiento_to_none(cls, v):
+        """Convierte string vacio a None para que Optional[date] funcione."""
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        return v
+
+    @field_validator("codigo_referido", mode="before")
+    @classmethod
+    def blank_codigo_referido_to_none(cls, v):
+        """Convierte string vacio a None para que Optional[int] funcione."""
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
 
 
 class UsuarioCreate(UsuarioBase):

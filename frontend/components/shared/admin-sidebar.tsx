@@ -17,6 +17,7 @@ import {
   Shield,
   Activity,
   Home,
+  Monitor,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from './logo'
@@ -86,6 +87,12 @@ const navSections: NavSection[] = [
     items: [
       { href: '/admin/transacciones', label: 'Transacciones', icon: Activity, roles: ['ROL_ADMIN'] },
       { href: '/admin/dba', label: 'Herramientas DBA', icon: Database, roles: ['ROL_ADMIN'] },
+    ],
+  },
+  {
+    title: 'Monitor',
+    items: [
+      { href: '/admin/monitor', label: 'BD en Vivo', icon: Monitor },
     ],
   },
 ]

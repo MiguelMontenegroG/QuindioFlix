@@ -1,6 +1,7 @@
 """Routers de autenticacion: /login, /registro, /verificar."""
 
-from fastapi import APIRouter, HTTPException, Depends
+import logging
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ..auth import verify_token
@@ -11,13 +12,22 @@ from ..schemas.usuario import (
 )
 from ..services.auth_service import registrar_usuario, autenticar_usuario, obtener_usuario_por_id
 
+logger = logging.getLogger("auth.router")
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 security = HTTPBearer()
 
 
 @router.post("/registro", response_model=RegistroResponse)
-def registro(data: UsuarioCreate):
+async def registro(request: Request):
     """Registra un nuevo usuario en QuindioFlix."""
+    try:
+        body = await request.json()
+        logger.info("Datos recibidos en registro: %s", body)
+        data = UsuarioCreate(**body)
+    except Exception as e:
+        logger.error("Error validando datos de registro: %s", str(e))
+        raise HTTPException(status_code=422, detail=f"Error de validacion: {str(e)}")
+
     usuario = registrar_usuario(data)
     return RegistroResponse(usuario=usuario, mensaje="Registro exitoso. Bienvenido a QuindioFlix!")
 

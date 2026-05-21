@@ -31,7 +31,7 @@ def listar_planes() -> list[Plan]:
 
 def obtener_plan(id_plan: int) -> Plan | None:
     """Obtiene un plan por ID."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(

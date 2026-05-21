@@ -11,18 +11,24 @@ from ..schemas.usuario import UsuarioCreate, UsuarioLogin, Token, Usuario, Perfi
 
 
 def execute_sp_registrar_usuario(
-    conn, p_nombre, p_email, p_telefono, p_fecha_nacimiento,
+    conn, p_nombre, p_email, p_password_hash, p_telefono, p_fecha_nacimiento,
     p_ciudad, p_id_plan, p_id_referidor, p_metodo_pago
 ) -> int:
-    """Ejecuta SP_REGISTRAR_USUARIO_COMPLETO y retorna el id_usuario generado."""
+    """Ejecuta SP_REGISTRAR_USUARIO y retorna el id_usuario generado.
+
+    El SP existente en BD recibe 10 parametros:
+    nombre, email, password_hash, telefono, fecha_nac,
+    ciudad, id_plan, id_referidor, metodo_pago, y retorna id_usuario (OUT).
+    """
     out_cursor = conn.cursor()
     try:
         out_id_usuario = out_cursor.var(int)
         out_cursor.callproc(
-            f"{fq('SP_REGISTRAR_USUARIO_COMPLETO')}",
+            f"{fq('SP_REGISTRAR_USUARIO')}",
             [
                 p_nombre,
                 p_email,
+                p_password_hash,
                 p_telefono,
                 p_fecha_nacimiento,
                 p_ciudad,
@@ -40,20 +46,21 @@ def execute_sp_registrar_usuario(
         out_cursor.close()
 
 
-def _insert_auth(conn, id_usuario: int, password_hash: str) -> None:
-    """Inserta credenciales en USUARIOS_AUTH."""
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            f"INSERT INTO {fq('USUARIOS_AUTH')} (id_usuario, password_hash) VALUES (:1, :2)",
-            [id_usuario, password_hash]
-        )
-    finally:
-        cursor.close()
+
 
 
 def registrar_usuario(data: UsuarioCreate) -> Usuario:
-    """Registra un nuevo usuario usando SP_REGISTRAR_USUARIO_COMPLETO."""
+    """Registra un nuevo usuario usando SP_REGISTRAR_USUARIO.
+
+    El SP se encarga de:
+    - Validar datos (email unico, plan existe, etc.)
+    - Insertar en USUARIOS (con password_hash incluido)
+    - Crear perfil ADULTO por defecto
+    - Generar primer pago PENDIENTE (con descuento si hay referido)
+    - Hacer COMMIT
+
+    Luego consultamos el usuario creado para devolverlo.
+    """
     conn = get_connection("admin")
     try:
         hashed = hash_password(data.password)
@@ -68,16 +75,24 @@ def registrar_usuario(data: UsuarioCreate) -> Usuario:
             else:
                 try:
                     fecha_nac = datetime.strptime(fecha_nac_raw, "%Y-%m-%d").date()
+                    # Validar que la fecha cumpla la constraint CK_USU_FNAC
+                    # (debe ser anterior a 2026-04-12)
+                    if fecha_nac >= date(2026, 4, 12):
+                        fecha_nac = date(2000, 1, 1)
                 except ValueError:
                     fecha_nac = date(1900, 1, 1)
         else:
             fecha_nac = fecha_nac_raw
+            if fecha_nac >= date(2026, 4, 12):
+                fecha_nac = date(2000, 1, 1)
         ciudad = data.ciudad if data.ciudad and data.ciudad.strip() else "Sin ciudad"
 
+        # El SP recibe el password_hash y lo guarda directamente en USUARIOS.password_hash
         id_usuario = execute_sp_registrar_usuario(
             conn,
             data.nombre,
             data.email,
+            hashed,
             telefono,
             fecha_nac,
             ciudad,
@@ -85,9 +100,7 @@ def registrar_usuario(data: UsuarioCreate) -> Usuario:
             data.codigo_referido,
             "PSE",
         )
-
-        _insert_auth(conn, id_usuario, hashed)
-        conn.commit()
+        # El SP ya hizo COMMIT internamente
 
         cursor = conn.cursor()
         cursor.execute(
@@ -124,9 +137,8 @@ def autenticar_usuario(data: UsuarioLogin) -> Token | None:
         cursor.execute(
             f"""SELECT u.id_usuario, u.nombre, u.email, u.telefono, u.ciudad,
                       u.fecha_nacimiento, u.id_plan, u.estado_cuenta, u.fecha_registro,
-                      a.password_hash, NVL(u.es_admin, 'N')
+                      u.password_hash, NVL(u.es_admin, 'N')
                FROM {fq('USUARIOS')} u
-               JOIN {fq('USUARIOS_AUTH')} a ON a.id_usuario = u.id_usuario
                WHERE u.email = :1""",
             [data.email]
         )

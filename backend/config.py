@@ -1,18 +1,19 @@
 """Configuracion centralizada usando variables de entorno."""
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Cargar .env pero NO sobrescribir variables que ya existen en el entorno
-load_dotenv(override=False)
-
-
+# Buscar el .env en la carpeta donde esta este archivo (backend/.env)
+_env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=_env_path, override=True)
 class Settings:
     # Oracle
     DB_USER: str = os.getenv("DB_USER") or os.getenv("DB_USER_FILE") or "C##quindioflix"
     DB_PASS: str = os.getenv("DB_PASS") or os.getenv("DB_PASSWORD") or "quindioflix"
     DB_DSN: str = os.getenv("DB_DSN") or "localhost:1521/BD"
-    DB_SCHEMA: str = os.getenv("DB_SCHEMA") or "QUINDIOFLIX"
+    _db_schema = os.getenv("DB_SCHEMA")
+    DB_SCHEMA: str = _db_schema if _db_schema is not None else "QUINDIOFLIX"
 
     # Usuarios por rol (pooles separados)
     DB_USER_ADMIN: str = os.getenv("DB_USER_ADMIN") or os.getenv("DB_USER") or "qf_admin"
@@ -41,7 +42,7 @@ class Settings:
     APP_VERSION: str = "1.0.0"
     CORS_ORIGINS: list[str] = [
         origin.strip()
-        for origin in (os.getenv("CORS_ORIGINS") or "http://localhost:3000").split(",")
+        for origin in (os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://localhost:3001").split(",")
         if origin.strip()
     ]
 

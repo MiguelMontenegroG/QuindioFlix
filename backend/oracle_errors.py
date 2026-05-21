@@ -22,9 +22,10 @@ def handle_oracle_error(e: oracledb.DatabaseError) -> None:
     code = getattr(error, "code", None)
     message = getattr(error, "message", str(e))
 
+    print(f"[Oracle Error] Code={code}, Message={message}")  # LOG para depuracion
+
     if code in ORACLE_ERROR_MAP:
         http_code, detail = ORACLE_ERROR_MAP[code]
-        raise HTTPException(status_code=http_code, detail=detail)
+        raise HTTPException(status_code=http_code, detail=f"{detail} (ORA-{code})")
 
-    raise HTTPException(status_code=500, detail=f"Error de BD: {message}")
-
+    raise HTTPException(status_code=500, detail=f"Error de BD (ORA-{code}): {message}")

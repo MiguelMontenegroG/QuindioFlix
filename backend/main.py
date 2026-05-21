@@ -32,6 +32,7 @@ from .routers import (
     perfiles,
     favoritos,
     calificaciones,
+    monitor_router,  # <-- NUEVO: monitor en tiempo real
 )
 
 
@@ -84,6 +85,7 @@ app.include_router(analitica.router)
 app.include_router(admin.router)
 app.include_router(dba.router)
 app.include_router(setup.router)
+app.include_router(monitor_router)  # <-- NUEVO
 
 
 @app.get("/")

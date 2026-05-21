@@ -11,10 +11,23 @@ ROLE_USERS = {
     "contenido": (settings.DB_USER_CONTENIDO, settings.DB_PASS_CONTENIDO),
 }
 
+# Usuario principal por defecto
+_DEFAULT_USER = settings.DB_USER
+_DEFAULT_PASS = settings.DB_PASS
+
+
+def _get_credentials(role: str) -> tuple[str, str]:
+    """Obtiene credenciales para un rol, con fallback al usuario principal."""
+    user, password = ROLE_USERS[role]
+    # Si no hay password o el usuario es qf_* (no creado en BD), usar el principal
+    if not password or user.startswith("qf_"):
+        return (_DEFAULT_USER, _DEFAULT_PASS)
+    return (user, password)
+
 
 def _create_pool(role: str) -> oracledb.ConnectionPool:
     """Crea un pool por rol si no existe."""
-    user, password = ROLE_USERS[role]
+    user, password = _get_credentials(role)
     return oracledb.create_pool(
         user=user,
         password=password,
