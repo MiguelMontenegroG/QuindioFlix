@@ -28,41 +28,16 @@ export default function RegistroPage() {
 
   const cargarPlanes = async () => {
     try {
+      // planesAPI.obtenerTodos() ya mapea los datos con mapBackendPlanToFrontend
+      // y devuelve { id, nombre, precio, max_pantallas, calidad, max_perfiles, descripcion }
       const data = await planesAPI.obtenerTodos()
-      const planesMapeados: Plan[] = data.map((p: any) => ({
-        id: p.id_plan,
-        nombre: p.nombre_plan as Plan['nombre'],
-        precio: p.precio_mensual,
-        max_pantallas: p.num_pantallas,
-        calidad: mapearCalidad(p.calidad_video),
-        max_perfiles: p.max_perfiles,
-        descripcion: obtenerDescripcionPlan(p.nombre_plan, p.precio_mensual, p.calidad_video),
-      }))
-      setPlanes(planesMapeados)
+      setPlanes(data)
     } catch (error) {
       console.error('Error al cargar planes:', error)
       toast.error('Error al cargar los planes. Recarga la pagina.')
     } finally {
       setLoadingPlanes(false)
     }
-  }
-
-  const mapearCalidad = (calidad: string): Plan['calidad'] => {
-    switch (calidad) {
-      case 'SD': return 'HD'
-      case 'HD': return 'Full HD'
-      case '4K': return '4K'
-      default: return 'HD'
-    }
-  }
-
-  const obtenerDescripcionPlan = (nombre: string, precio: number, calidad: string): string => {
-    const descripciones: Record<string, string> = {
-      'Basico': 'Ideal para una persona. Contenido en SD.',
-      'Estandar': 'Perfecto para parejas. Contenido en HD.',
-      'Premium': 'Para toda la familia. Contenido en 4K Ultra HD.',
-    }
-    return descripciones[nombre] || 'Plan ' + nombre + ' - $' + precio.toLocaleString('es-CO') + '/mes'
   }
 
   const [formData, setFormData] = useState({

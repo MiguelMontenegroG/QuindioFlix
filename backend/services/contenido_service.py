@@ -62,11 +62,15 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
         total = cursor.fetchone()[0]
 
         offset = (params.pagina - 1) * params.por_pagina
+
+        # Incluir JOIN a CATEGORIAS para obtener nombre_categoria
         sql = f"""
             SELECT c.id_contenido, c.titulo, c.anio_lanzamiento, c.duracion,
                    c.sinopsis, c.clasificacion_edad, c.fecha_agregado, c.es_original,
-                   c.id_categoria, c.id_empleado_resp
+                   c.id_categoria, c.id_empleado_resp,
+                   cat.nombre_categoria, cat.descripcion
             FROM {fq('CONTENIDO')} c
+            LEFT JOIN {fq('CATEGORIAS')} cat ON cat.id_categoria = c.id_categoria
             WHERE {where_sql}
             ORDER BY c.fecha_agregado DESC
             OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
@@ -75,7 +79,20 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
         binds["limit"] = params.por_pagina
 
         cursor.execute(sql, binds)
-        resultados = [_row_to_contenido(row) for row in cursor]
+        # Construir objetos Contenido con categoria incluida
+        resultados = []
+        for row in cursor:
+            contenido = Contenido(
+                id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
+                duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
+                fecha_agregado=row[6], es_original=row[7],
+                id_categoria=row[8], id_empleado_resp=row[9],
+            )
+            if row[10]:
+                contenido.categoria = Categoria(
+                    id_categoria=row[8], nombre_categoria=row[10], descripcion=row[11]
+                )
+            resultados.append(contenido)
 
         cursor.close()
         return resultados, total
@@ -91,10 +108,13 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            f"""SELECT id_contenido, titulo, anio_lanzamiento, duracion,
-                      sinopsis, clasificacion_edad, fecha_agregado, es_original,
-                      id_categoria, id_empleado_resp
-               FROM {fq('CONTENIDO')} WHERE id_contenido = :1""",
+            f"""SELECT c.id_contenido, c.titulo, c.anio_lanzamiento, c.duracion,
+                      c.sinopsis, c.clasificacion_edad, c.fecha_agregado, c.es_original,
+                      c.id_categoria, c.id_empleado_resp,
+                      cat.nombre_categoria, cat.descripcion
+               FROM {fq('CONTENIDO')} c
+               LEFT JOIN {fq('CATEGORIAS')} cat ON cat.id_categoria = c.id_categoria
+               WHERE c.id_contenido = :1""",
             [id_contenido]
         )
         row = cursor.fetchone()
@@ -102,7 +122,17 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
             cursor.close()
             return None
 
-        contenido = _row_to_contenido(row)
+        contenido = Contenido(
+            id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
+            duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
+            fecha_agregado=row[6], es_original=row[7],
+            id_categoria=row[8], id_empleado_resp=row[9],
+        )
+        # Asignar categoria como objeto
+        if row[10]:
+            contenido.categoria = Categoria(
+                id_categoria=row[8], nombre_categoria=row[10], descripcion=row[11]
+            )
 
         cursor.execute(
             f"""SELECT g.id_genero, g.nombre_genero

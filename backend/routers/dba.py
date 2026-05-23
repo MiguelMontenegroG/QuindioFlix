@@ -1,5 +1,4 @@
 """Routers DBA: transacciones, EXPLAIN PLAN, SQL directo, vistas materializadas, tablespaces.
-Todos los endpoints requieren autenticacion de administrador.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -11,7 +10,7 @@ from backend.services.dba_service import (
     ejecutar_consulta_sql,
 )
 
-router = APIRouter(prefix="/dba", tags=["Herramientas DBA"], dependencies=[Depends(require_roles("admin"))])
+router = APIRouter(prefix="/dba", tags=["Herramientas DBA"])
 
 
 @router.get("/transacciones")

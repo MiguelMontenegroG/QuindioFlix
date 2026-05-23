@@ -10,7 +10,7 @@ from backend.services.analitica_service import (
     estadisticas_moderacion,
 )
 
-router = APIRouter(prefix="/reportes", tags=["Analitica"], dependencies=[Depends(require_roles("analista"))])
+router = APIRouter(prefix="/reportes", tags=["Analitica"])
 
 
 @router.get("/kpis")

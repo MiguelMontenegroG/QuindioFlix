@@ -5,9 +5,11 @@ import { contenidoAPI, generosAPI } from '@/lib/api'
 import { mockContenido, mockGeneros, mockKPIs } from '@/lib/mock-data'
 import type { Contenido, Genero, KPIsDashboard } from '@/lib/types'
 
-// En desarrollo/mock usamos datos simulados
-const USE_MOCK = true
-
+// En produccion usamos la API real. Cambiar a true solo para desarrollo sin backend.
+// ============================================
+// Configuracion: false = usa API real, true = datos mock
+// ============================================
+const USE_MOCK = false
 // ============================================
 // Hook: Obtener todo el catálogo
 // ============================================
@@ -39,9 +41,9 @@ export function useCatalogo(params?: {
       const q = params.busqueda.toLowerCase()
       filtered = filtered.filter(
         (c) =>
-          c.titulo.toLowerCase().includes(q) ||
-          c.sinopsis.toLowerCase().includes(q)
-      )
+        c.titulo.toLowerCase().includes(q) ||
+        c.sinopsis.toLowerCase().includes(q)
+    )
     }
 
     return {

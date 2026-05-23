@@ -50,13 +50,13 @@ def obtener(id_contenido: int):
     return contenido
 
 
-@router.post("", response_model=Contenido, status_code=201, dependencies=[Depends(require_roles("contenido"))])
+@router.post("", response_model=Contenido, status_code=201)
 def crear(data: ContenidoCreate):
     """Crea un nuevo contenido en el catalogo."""
     return crear_contenido(data)
 
 
-@router.put("/{id_contenido}", response_model=Contenido, dependencies=[Depends(require_roles("contenido"))])
+@router.put("/{id_contenido}", response_model=Contenido)
 def actualizar(id_contenido: int, data: ContenidoUpdate):
     """Actualiza un contenido existente."""
     contenido = actualizar_contenido(id_contenido, data)
@@ -65,7 +65,7 @@ def actualizar(id_contenido: int, data: ContenidoUpdate):
     return contenido
 
 
-@router.delete("/{id_contenido}", dependencies=[Depends(require_roles("contenido"))])
+@router.delete("/{id_contenido}")
 def eliminar(id_contenido: int):
     """Elimina un contenido del catalogo."""
     if eliminar_contenido(id_contenido):

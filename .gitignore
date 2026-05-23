@@ -36,6 +36,10 @@ Thumbs.db
 backend/.env
 backend/.env.example
 
+# Temp scripts
+check_counts.py
+*.bak
+
 # Vercel / v0
 .snowflake/
 .v0-trash/

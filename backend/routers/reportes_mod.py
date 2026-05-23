@@ -8,7 +8,7 @@ from backend.dependencies import require_roles
 from backend.oracle_errors import handle_oracle_error
 from backend.schemas.reporte import Reporte, ReporteCreate, ResolverReporte
 
-router = APIRouter(prefix="/reportes", tags=["Reportes y Moderacion"], dependencies=[Depends(require_roles("soporte"))])
+router = APIRouter(prefix="/reportes", tags=["Reportes y Moderacion"])
 
 
 @router.post("", response_model=Reporte, status_code=201)

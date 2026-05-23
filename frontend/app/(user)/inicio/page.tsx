@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { MainNav } from '@/components/shared/main-nav'
@@ -29,11 +29,11 @@ export default function HomePage() {
     : mockContenido
 
   // Organizar contenido por categorías
-  const peliculas = contenidoFiltrado.filter((c) => c.categoria === 'película')
-  const series = contenidoFiltrado.filter((c) => c.categoria === 'serie')
-  const documentales = contenidoFiltrado.filter((c) => c.categoria === 'documental')
-  const musica = contenidoFiltrado.filter((c) => c.categoria === 'música')
-  const podcasts = contenidoFiltrado.filter((c) => c.categoria === 'podcast')
+  const peliculas = contenidoFiltrado.filter((c) => c.categoria === 'Pelicula')
+  const series = contenidoFiltrado.filter((c) => c.categoria === 'Serie')
+  const documentales = contenidoFiltrado.filter((c) => c.categoria === 'Documental')
+  const musica = contenidoFiltrado.filter((c) => c.categoria === 'Musica')
+  const podcasts = contenidoFiltrado.filter((c) => c.categoria === 'Podcast')
   const originales = contenidoFiltrado.filter((c) => c.es_original)
   const populares = [...contenidoFiltrado].sort(
     (a, b) => (b.total_reproducciones || 0) - (a.total_reproducciones || 0)

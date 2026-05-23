@@ -17,10 +17,10 @@ export default function DocumentalesPage() {
   useEffect(() => {
     async function cargar() {
       try {
-        const response = await contenidoAPI.obtenerTodos({ categoria: 'documental', por_pagina: 50 })
+        const response = await contenidoAPI.obtenerTodos({ categoria: 'Documental', por_pagina: 50 })
         if (response?.data) setContenido(response.data)
       } catch {
-        setContenido(mockContenido.filter((c) => c.categoria === 'documental'))
+        setContenido(mockContenido.filter((c) => c.categoria === 'Documental'))
       }
       if (perfilActivo) {
         try { const favs = await favoritosAPI.obtenerPorPerfil(perfilActivo.id); setFavoritos(favs.map((f) => f.id_contenido)) } catch {}

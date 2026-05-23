@@ -18,10 +18,10 @@ export default function SeriesPage() {
   useEffect(() => {
     async function cargar() {
       try {
-        const response = await contenidoAPI.obtenerTodos({ categoria: 'serie', por_pagina: 50 })
+        const response = await contenidoAPI.obtenerTodos({ categoria: 'Serie', por_pagina: 50 })
         if (response?.data) setContenido(response.data)
       } catch {
-        setContenido(mockContenido.filter((c) => c.categoria === 'serie'))
+        setContenido(mockContenido.filter((c) => c.categoria === 'Serie'))
       }
       if (perfilActivo) {
         try {

@@ -43,6 +43,7 @@ class Favorito(BaseModel):
     id_perfil: int
     id_contenido: int
     fecha_agregado: datetime
+    contenido: Optional[dict] = None
 
     class Config:
         from_attributes = True

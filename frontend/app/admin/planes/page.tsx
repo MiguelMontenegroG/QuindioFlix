@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Edit2, Save, X, Loader2, AlertCircle } from 'lucide-react'
+import { Edit2, Save, X, Loader2, AlertCircle, Monitor, Users, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -58,7 +58,7 @@ export default function PlanesAdminPage() {
   const saveEdit = async (id: number) => {
     setIsSaving(true)
     try {
-      await planesAPI.actualizar(id, editForm)
+      await planesAPI.actualizar(id, editForm as any)
       toast.success('Plan actualizado correctamente')
       setEditingId(null)
       cargarPlanes()

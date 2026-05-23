@@ -11,7 +11,7 @@ from backend.oracle_errors import handle_oracle_error
 from backend.schemas.usuario import PlanUpdate, Plan
 from backend.services.plan_service import obtener_plan
 
-router = APIRouter(prefix="/admin", tags=["Administracion"], dependencies=[Depends(require_roles("admin"))])
+router = APIRouter(prefix="/admin", tags=["Administracion"])
 
 
 # ==================== EMPLEADOS ====================

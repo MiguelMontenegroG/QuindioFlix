@@ -44,13 +44,19 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
 // ==================== AUTENTICACIÓN ====================
 export const authAPI = {
-  login: (email: string, password: string) =>
-    fetchAPI<{ token: string; usuario: Usuario; perfiles: Perfil[] }>('/auth/login', {
+  login: async (email: string, password: string) => {
+    const data = await fetchAPI<{ token: string; usuario: any; perfiles: any[] }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
-    }),
+    })
+    return {
+      token: data.token,
+      usuario: mapBackendUsuarioToFrontend(data.usuario),
+      perfiles: data.perfiles.map(mapBackendPerfilToFrontend),
+    }
+  },
 
-  registro: (data: {
+  registro: async (data: {
     nombre: string
     email: string
     password: string
@@ -59,14 +65,21 @@ export const authAPI = {
     fecha_nacimiento?: string
     id_plan: number
     codigo_referido?: string
-  }) =>
-    fetchAPI<{ usuario: Usuario; mensaje: string }>('/auth/registro', {
+  }) => {
+    const result = await fetchAPI<{ usuario: any; mensaje: string }>('/auth/registro', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
+    })
+    return { usuario: mapBackendUsuarioToFrontend(result.usuario), mensaje: result.mensaje }
+  },
 
-  verificarToken: () =>
-    fetchAPI<{ usuario: Usuario; perfiles: Perfil[] }>('/auth/verificar'),
+  verificarToken: async () => {
+    const data = await fetchAPI<{ usuario: any; perfiles: any[] }>('/auth/verificar')
+    return {
+      usuario: mapBackendUsuarioToFrontend(data.usuario),
+      perfiles: data.perfiles.map(mapBackendPerfilToFrontend),
+    }
+  },
 }
 
 // ==================== PERFILES ====================
@@ -125,10 +138,65 @@ export const perfilesAPI = {
     }),
 }
 
+// Mapeo de categorias: backend usa numeros (id_categoria), frontend usa strings
+const CATEGORIA_MAP: Record<number, string> = {
+  1: 'Pelicula',
+  2: 'Serie',
+  3: 'Documental',
+  4: 'Musica',
+  5: 'Podcast',
+}
+
+function obtenerNombreCategoria(id?: number, nombre?: string): string {
+  if (nombre) return nombre
+  if (id && CATEGORIA_MAP[id]) return CATEGORIA_MAP[id]
+  return 'Pelicula'
+}
+
+// Mapeo backend -> frontend para Contenido
+function mapBackendContenidoToFrontend(bc: any): Contenido {
+  const categoria = obtenerNombreCategoria(bc.id_categoria, bc.nombre_categoria || bc.categoria)
+  return {
+    id: bc.id_contenido ?? bc.id,
+    titulo: bc.titulo ?? bc.TITULO,
+    sinopsis: bc.sinopsis ?? bc.SINOPSIS ?? '',
+    año: bc.anio_lanzamiento ?? bc.año ?? bc.ANIO_LANZAMIENTO,
+    duracion_minutos: bc.duracion ? Math.round(bc.duracion / 60) : (bc.duracion_minutos || 0),
+    clasificacion_edad: bc.clasificacion_edad ?? bc.CLASIFICACION_EDAD,
+    categoria: categoria as any,
+    generos: Array.isArray(bc.generos) ? bc.generos.map((g: any) => ({
+      id: g.id_genero ?? g.id,
+      nombre: g.nombre_genero ?? g.nombre,
+    })) : [],
+    poster_url: bc.poster_url || `https://placehold.co/300x450?text=${encodeURIComponent(bc.titulo?.slice(0, 20) || '?')}`,
+    banner_url: bc.banner_url,
+    trailer_url: bc.trailer_url,
+    es_original: bc.es_original === 'S' || bc.es_original === true,
+    estado: (bc.estado || 'publicado').toLowerCase() as any,
+    calificacion_promedio: bc.calificacion_promedio ?? bc.CALIFICACION_PROMEDIO,
+    total_reproducciones: bc.total_reproducciones ?? bc.TOTAL_REPRODUCCIONES,
+    fecha_publicacion: bc.fecha_agregado ?? bc.fecha_publicacion,
+  }
+}
+
+// Mapeo frontend -> backend para Contenido (CRUD)
+function mapFrontendContenidoToBackend(fc: any): any {
+  return {
+    titulo: fc.titulo,
+    anio_lanzamiento: fc.año,
+    duracion: (fc.duracion_minutos || 0) * 60,
+    sinopsis: fc.sinopsis,
+    clasificacion_edad: fc.clasificacion_edad,
+    es_original: fc.es_original ? 'S' : 'N',
+    id_categoria: Object.entries(CATEGORIA_MAP).find(([, v]) => v === fc.categoria)?.[0] || 1,
+    generos: fc.generos?.map((g: any) => g.id ?? g) || [],
+  }
+}
+
 // ==================== CONTENIDO ====================
 export const contenidoAPI = {
   obtenerTodos: (params?: {
-    categoria?: string
+    categoria?: string | number
     genero?: string
     año?: number
     clasificacion?: string
@@ -144,14 +212,21 @@ export const contenidoAPI = {
     if (params?.busqueda) searchParams.append('q', String(params.busqueda))
     if (params?.pagina !== undefined) searchParams.append('pagina', String(params.pagina))
     if (params?.por_pagina !== undefined) searchParams.append('por_pagina', String(params.por_pagina))
-    return fetchAPI<{ data: Contenido[]; total: number }>(`/contenido?${searchParams}`)
+    return fetchAPI<{ data: any[]; total: number }>(`/contenido?${searchParams}`).then(resp => ({
+      ...resp,
+      data: resp.data.map(mapBackendContenidoToFrontend),
+    }))
   },
 
-  obtenerPorId: (id: number) =>
-    fetchAPI<Contenido>(`/contenido/${id}`),
+  obtenerPorId: async (id: number) => {
+    const data = await fetchAPI<any>(`/contenido/${id}`)
+    return mapBackendContenidoToFrontend(data)
+  },
 
-  obtenerRecomendado: (idPerfil: number) =>
-    fetchAPI<Contenido | null>(`/contenido/recomendado/${idPerfil}`),
+  obtenerRecomendado: async (idPerfil: number) => {
+    const data = await fetchAPI<any | null>(`/contenido/recomendado/${idPerfil}`)
+    return data ? mapBackendContenidoToFrontend(data) : null
+  },
 
   obtenerPorCategoria: async (categoria: string) => {
     const result = await contenidoAPI.obtenerTodos({ categoria })
@@ -164,24 +239,30 @@ export const contenidoAPI = {
   },
 
   buscar: async (query: string) => {
-    const result = await fetchAPI<{ data: Contenido[]; total: number }>(
+    const result = await fetchAPI<{ data: any[]; total: number }>(
       `/contenido/buscar/all?q=${encodeURIComponent(query)}`
     )
-    return result.data
+    return result.data.map(mapBackendContenidoToFrontend)
   },
 
   // CRUD para empleados de contenido
-  crear: (data: Omit<Contenido, 'id'>) =>
-    fetchAPI<Contenido>('/contenido', {
+  crear: async (data: Omit<Contenido, 'id'>) => {
+    const backendData = mapFrontendContenidoToBackend(data)
+    const result = await fetchAPI<any>('/contenido', {
       method: 'POST',
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify(backendData),
+    })
+    return mapBackendContenidoToFrontend(result)
+  },
 
-  actualizar: (id: number, data: Partial<Contenido>) =>
-    fetchAPI<Contenido>(`/contenido/${id}`, {
+  actualizar: async (id: number, data: Partial<Contenido>) => {
+    const backendData = mapFrontendContenidoToBackend(data)
+    const result = await fetchAPI<any>(`/contenido/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify(backendData),
+    })
+    return mapBackendContenidoToFrontend(result)
+  },
 
   eliminar: (id: number) =>
     fetchAPI<{ mensaje: string }>(`/contenido/${id}`, {
@@ -226,16 +307,30 @@ export const reproduccionesAPI = {
     fetchAPI<Reproduccion[]>(`/perfiles/${idPerfil}/historial/en-progreso`),
 }
 
+function mapBackendFavoritoToFrontend(bf: any): Favorito {
+  return {
+    id: bf.id ?? `${bf.id_perfil}-${bf.id_contenido}`,
+    id_perfil: bf.id_perfil,
+    id_contenido: bf.id_contenido,
+    fecha_agregado: bf.fecha_agregado,
+    contenido: bf.contenido ? mapBackendContenidoToFrontend(bf.contenido) : undefined,
+  }
+}
+
 // ==================== FAVORITOS ====================
 export const favoritosAPI = {
-  obtenerPorPerfil: (idPerfil: number) =>
-    fetchAPI<Favorito[]>(`/perfiles/${idPerfil}/favoritos`),
+  obtenerPorPerfil: async (idPerfil: number) => {
+    const data = await fetchAPI<any[]>(`/perfiles/${idPerfil}/favoritos`)
+    return data.map(mapBackendFavoritoToFrontend)
+  },
 
-  agregar: (idPerfil: number, idContenido: number) =>
-    fetchAPI<Favorito>('/favoritos', {
+  agregar: async (idPerfil: number, idContenido: number) => {
+    const result = await fetchAPI<any>('/favoritos', {
       method: 'POST',
       body: JSON.stringify({ id_perfil: idPerfil, id_contenido: idContenido }),
-    }),
+    })
+    return mapBackendFavoritoToFrontend(result)
+  },
 
   eliminar: (idPerfil: number, idContenido: number) =>
     fetchAPI<{ mensaje: string }>(`/favoritos/${idPerfil}/${idContenido}`, {
@@ -319,34 +414,75 @@ export const reportesContenidoAPI = {
   },
 }
 
+function mapBackendUsuarioToFrontend(bu: any): Usuario {
+  return {
+    id: bu.id_usuario ?? bu.id,
+    nombre: bu.nombre,
+    email: bu.email,
+    telefono: bu.telefono,
+    ciudad: bu.ciudad,
+    fecha_nacimiento: bu.fecha_nacimiento,
+    id_plan: bu.id_plan,
+    estado: (bu.estado_cuenta ?? bu.estado ?? 'ACTIVO').toLowerCase() as any,
+    codigo_referido: bu.codigo_referido ?? bu.id_referidor,
+    fecha_registro: bu.fecha_registro,
+    es_admin: bu.es_admin ?? false,
+    role: bu.role ?? 'usuario',
+    plan: bu.plan,
+  }
+}
+
 // ==================== USUARIOS ====================
 export const usuariosAPI = {
-  obtenerPorId: (id: number) =>
-    fetchAPI<Usuario>(`/usuarios/${id}`),
+  obtenerPorId: async (id: number) => {
+    const data = await fetchAPI<any>(`/usuarios/${id}`)
+    return mapBackendUsuarioToFrontend(data)
+  },
 
-  actualizar: (id: number, data: Partial<Usuario>) =>
-    fetchAPI<Usuario>(`/usuarios/${id}`, {
+  actualizar: async (id: number, data: Partial<Usuario>) => {
+    const result = await fetchAPI<any>(`/usuarios/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
+    })
+    return mapBackendUsuarioToFrontend(result)
+  },
 
   // Para soporte/admin
-  obtenerTodos: (params?: { plan?: number; ciudad?: string; estado?: string; pagina?: number }) => {
+  obtenerTodos: async (params?: { plan?: number; ciudad?: string; estado?: string; pagina?: number }) => {
     const searchParams = new URLSearchParams()
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined) searchParams.append(key, String(value))
       })
     }
-    return fetchAPI<{ data: Usuario[]; total: number }>(`/usuarios/lista?${searchParams}`)
+    const result = await fetchAPI<{ data: any[]; total: number }>(`/usuarios/lista?${searchParams}`)
+    return { ...result, data: result.data.map(mapBackendUsuarioToFrontend) }
   },
+}
+
+function mapBackendPlanToFrontend(bp: any): Plan {
+  return {
+    id: bp.id_plan ?? bp.id,
+    nombre: (bp.nombre_plan ?? bp.nombre) as any,
+    precio: bp.precio_mensual ?? bp.precio,
+    max_pantallas: bp.num_pantallas ?? bp.max_pantallas,
+    calidad: (bp.calidad_video ?? bp.calidad) as any,
+    max_perfiles: bp.max_perfiles,
+    descripcion: bp.descripcion,
+  }
 }
 
 // ==================== PLANES ====================
 export const planesAPI = {
-  obtenerTodos: () => fetchAPI<Plan[]>('/pagos/planes'),
+  obtenerTodos: async () => {
+    const data = await fetchAPI<any[]>('/pagos/planes')
+    return data.map(mapBackendPlanToFrontend)
+  },
 
-  obtenerPorId: (id: number) => fetchAPI<Plan>(`/pagos/planes/${id}`),
+  obtenerPorId: async (id: number) => {
+    const data = await fetchAPI<any>(`/pagos/planes/${id}`)
+    return mapBackendPlanToFrontend(data)
+  },
 
   cambiarPlan: (idUsuario: number, idPlanNuevo: number) =>
     fetchAPI<{ mensaje: string; usuario: Usuario }>(`/usuarios/${idUsuario}/plan`, {
@@ -447,13 +583,21 @@ export const empleadosAPI = {
 export const analiticaAPI = {
   obtenerKPIs: async () => {
     const data = await fetchAPI<any>('/reportes/kpis')
+    let reportesPendientes = 0
+    try {
+      const modData = await fetchAPI<any>('/reportes/moderacion')
+      reportesPendientes = modData?.pendientes ?? 0
+    } catch {
+      // No hay permisos de moderacion, ignorar
+    }
     return {
-      usuarios_activos: data.usuarios_activos,
-      ingresos_mensuales: data.ingresos_mes ?? data.ingresos_mensuales,
-      total_reproducciones: data.reproducciones_totales ?? data.total_reproducciones,
-      contenido_total: data.contenido_total ?? data.contenido_mas_popular?.length,
-      contenido_mas_popular: data.contenido_mas_popular,
-    } as KPIsDashboard
+      usuarios_activos: data.usuarios_activos ?? 0,
+      ingresos_mensuales: data.ingresos_mes ?? data.ingresos_mensuales ?? 0,
+      total_reproducciones: data.reproducciones_totales ?? data.total_reproducciones ?? 0,
+      contenido_total: data.contenido_total ?? data.contenido_mas_popular?.length ?? 0,
+      contenido_mas_popular: data.contenido_mas_popular ?? [],
+      reportes_pendientes: reportesPendientes,
+    } as any
   },
 
   consumoPorCiudad: () => fetchAPI('/reportes/consumo-ciudad'),

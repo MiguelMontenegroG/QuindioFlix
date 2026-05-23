@@ -17,9 +17,9 @@ export default function PodcastsPage() {
   useEffect(() => {
     async function cargar() {
       try {
-        const response = await contenidoAPI.obtenerTodos({ categoria: 'podcast', por_pagina: 50 })
+        const response = await contenidoAPI.obtenerTodos({ categoria: 'Podcast', por_pagina: 50 })
         if (response?.data) setContenido(response.data)
-      } catch { setContenido(mockContenido.filter((c) => c.categoria === 'podcast')) }
+  } catch { setContenido(mockContenido.filter((c) => c.categoria === 'Podcast')) }
       if (perfilActivo) {
         try { const favs = await favoritosAPI.obtenerPorPerfil(perfilActivo.id); setFavoritos(favs.map((f) => f.id_contenido)) } catch {}
       }

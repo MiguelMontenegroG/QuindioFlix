@@ -40,7 +40,7 @@ export default function ReproductorContent() {
   const [duration, setDuration] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
-  const controlsTimeout = useRef<NodeJS.Timeout>()
+  const controlsTimeout = useRef<ReturnType<typeof setTimeout>>()
   const [isFavorite, setIsFavorite] = useState(false)
 
   const contenido = mockContenido.find((c) => c.id === id)
@@ -188,16 +188,9 @@ export default function ReproductorContent() {
           muted={muted}
           volume={volume}
           onProgress={handleProgress}
-          onDuration={(d) => setDuration(d)}
+          onDuration={setDuration as any}
           style={{ position: 'absolute', top: 0, left: 0 }}
-          config={{
-            file: {
-              attributes: {
-                controlsList: 'nodownload',
-                disablePictureInPicture: true,
-              },
-            },
-          }}
+          config={{}}
         />
 
         {/* Overlay de play/pausa */}

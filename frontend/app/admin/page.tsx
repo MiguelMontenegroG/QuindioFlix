@@ -25,10 +25,11 @@ export default function AdminDashboard() {
   })
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
+      useEffect(() => {
     async function cargarKPIs() {
       try {
         const data = await analiticaAPI.obtenerKPIs()
+        console.log('Datos KPIs recibidos:', data)
         if (data) {
           setKpisData({
             usuarios_activos: data.usuarios_activos || 0,
@@ -37,8 +38,8 @@ export default function AdminDashboard() {
             contenido_total: data.contenido_total || 0,
           })
         }
-      } catch {
-        console.warn('API no disponible, usando valores por defecto')
+      } catch (err) {
+        console.error('Error al cargar KPIs:', err)
       } finally {
         setIsLoading(false)
       }

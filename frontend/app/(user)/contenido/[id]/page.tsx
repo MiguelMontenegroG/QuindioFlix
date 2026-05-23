@@ -69,7 +69,7 @@ export default function ContenidoDetallePage() {
     .slice(0, 10)
 
   const temporadaActual = temporadas.find((t) => t.id === selectedTemporada)
-  const esSerie = contenido.categoria === 'serie' || contenido.categoria === 'podcast'
+  const esSerie = contenido.categoria === 'Serie' || contenido.categoria === 'Podcast'
 
   const handleReport = () => {
     if (!reportMotivo) {

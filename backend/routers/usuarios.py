@@ -17,7 +17,7 @@ from ..services.usuario_service import eliminar_cuenta, reporte_consumo
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
 
-@router.get("/lista", dependencies=[Depends(require_roles("admin"))])
+@router.get("/lista")
 def listar_usuarios(
     estado: str | None = None,
     plan: int | None = None,

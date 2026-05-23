@@ -65,7 +65,7 @@ export default function ModerationPage() {
     return colors[status] || 'bg-gray-500/20 text-gray-500';
   };
 
-  const getReasonColor = (reason: string) => {
+    const getReasonColor = (reason: string) => {
     const colors: Record<string, string> = {
       'contenido_inapropiado': 'bg-red-500/20 text-red-500',
       'error_tecnico': 'bg-orange-500/20 text-orange-500',
@@ -74,6 +74,13 @@ export default function ModerationPage() {
     };
     return colors[reason] || 'bg-gray-500/20 text-gray-500';
   };
+
+  const getReasonText = (reason: any): string => {
+    if (!reason) return 'No especificado'
+    if (typeof reason === 'string') return reason.replace(/_/g, ' ')
+    if (typeof reason === 'object') return reason.motivo || reason.nombre_motivo || JSON.stringify(reason)
+    return String(reason)
+  }
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
@@ -164,8 +171,8 @@ export default function ModerationPage() {
                 </div>
 
                 <div className="flex items-center gap-2 mb-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getReasonColor(report.motivo)}`}>
-                    {report.motivo}
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getReasonColor(typeof report.motivo === 'string' ? report.motivo : 'otro')}`}>
+                    {getReasonText(report.motivo)}
                   </span>
                 </div>
 

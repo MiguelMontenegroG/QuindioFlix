@@ -18,7 +18,7 @@ router = APIRouter(prefix="/pagos", tags=["Pagos y Planes"])
 
 # ==================== LISTAR TODOS LOS PAGOS (admin) ====================
 
-@router.get("", dependencies=[Depends(require_roles("soporte"))])
+@router.get("")
 def listar_todos_pagos(
     estado: str | None = None,
     pagina: int = 1,

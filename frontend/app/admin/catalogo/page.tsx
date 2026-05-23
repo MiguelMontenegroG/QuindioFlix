@@ -164,12 +164,13 @@ export default function CatalogoPage() {
                 </label>
                 <select
                   value={formData.clasificacion_edad}
-                  onChange={(e) => setFormData({ ...formData, clasificacion_edad: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, clasificacion_edad: e.target.value as any })}
                   className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground"
                 >
                   <option value="TP">TP</option>
                   <option value="+7">+7</option>
                   <option value="+13">+13</option>
+                  <option value="+16">+16</option>
                   <option value="+18">+18</option>
                 </select>
               </div>
@@ -243,12 +244,12 @@ export default function CatalogoPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Titulo</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Año</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Categoria</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Clasificacion</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Original</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Título</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Año</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Categoría</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Clasificación</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Original</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
                 </tr>
               </thead>
               <tbody>

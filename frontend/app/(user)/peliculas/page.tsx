@@ -17,10 +17,10 @@ export default function PeliculasPage() {
   useEffect(() => {
     async function cargar() {
       try {
-        const response = await contenidoAPI.obtenerTodos({ categoria: 'pelicula', por_pagina: 50 })
+        const response = await contenidoAPI.obtenerTodos({ categoria: 'Pelicula', por_pagina: 50 })
         if (response?.data) setContenido(response.data)
       } catch {
-        setContenido(mockContenido.filter((c) => c.categoria === 'pelicula'))
+        setContenido(mockContenido.filter((c) => c.categoria === 'Pelicula'))
       }
       if (perfilActivo) {
         try {
