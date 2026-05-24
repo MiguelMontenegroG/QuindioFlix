@@ -4,7 +4,6 @@ import oracledb
 from fastapi import APIRouter, HTTPException, Depends
 
 from backend.database import get_connection, release_connection, fq
-from backend.dependencies import require_roles
 from backend.oracle_errors import handle_oracle_error
 from backend.schemas.usuario import Plan
 from backend.schemas.pago import Pago, PagoCreate, PagoUpdateEstado
@@ -25,7 +24,7 @@ def listar_todos_pagos(
     por_pagina: int = 20,
 ):
     """Lista todos los pagos con filtro opcional por estado (admin)."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         where = ""
@@ -56,7 +55,7 @@ def listar_todos_pagos(
         cursor.close()
         return {"data": pagos, "total": total, "pagina": pagina, "por_pagina": por_pagina}
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")
 
 
 # ==================== PLANES ====================
@@ -95,7 +94,7 @@ def actualizar_estado_pago(id_pago: int, data: PagoUpdateEstado):
     """Actualiza el estado de un pago."""
     conn = None
     try:
-        conn = get_connection("soporte")
+        conn = get_connection("admin")
         cursor = conn.cursor()
         cursor.execute(
             f"UPDATE {fq('PAGOS')} SET estado_pago = :1 WHERE id_pago = :2",
@@ -114,7 +113,7 @@ def actualizar_estado_pago(id_pago: int, data: PagoUpdateEstado):
         handle_oracle_error(e)
     finally:
         if conn:
-            release_connection(conn, "soporte")
+            release_connection(conn, "admin")
 
 
 @router.get("/calcular-monto/{id_usuario}")

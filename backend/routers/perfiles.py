@@ -49,17 +49,23 @@ def actualizar_perfil(id_perfil: int, data: PerfilUpdate):
 
 @router.delete("/{id_perfil}")
 def eliminar_perfil(id_perfil: int):
-    """Elimina un perfil."""
+    """Elimina un perfil y todos sus datos asociados (favoritos, historial)."""
     conn = get_connection("admin")
     try:
         cursor = conn.cursor()
+        # Eliminar registros asociados primero (FK)
+        cursor.execute(f"DELETE FROM {fq('FAVORITOS')} WHERE id_perfil = :1", [id_perfil])
+        cursor.execute(f"DELETE FROM {fq('REPRODUCCIONES')} WHERE id_perfil = :1", [id_perfil])
+        cursor.execute(f"DELETE FROM {fq('CALIFICACIONES')} WHERE id_perfil = :1", [id_perfil])
+        cursor.execute(f"DELETE FROM {fq('REPORTES_CONTENIDO')} WHERE id_perfil_reportador = :1", [id_perfil])
+        # Finalmente eliminar el perfil
         cursor.execute(f"DELETE FROM {fq('PERFILES')} WHERE id_perfil = :1", [id_perfil])
         if cursor.rowcount == 0:
             cursor.close()
             raise HTTPException(status_code=404, detail="Perfil no encontrado")
         conn.commit()
         cursor.close()
-        return {"mensaje": "Perfil eliminado exitosamente"}
+        return {"mensaje": "Perfil y todos sus datos asociados eliminados exitosamente"}
     except oracledb.DatabaseError as e:
         conn.rollback()
         handle_oracle_error(e)

@@ -143,17 +143,17 @@ export interface Reporte {
 }
 
 // Tipos de pagos
-export type EstadoPago = 'exitoso' | 'fallido' | 'pendiente' | 'reembolsado'
-export type MetodoPago = 'tarjeta_credito' | 'tarjeta_debito' | 'pse' | 'efectivo'
+export type EstadoPago = 'EXITOSO' | 'FALLIDO' | 'PENDIENTE' | 'REEMBOLSADO'
+export type MetodoPago = 'TARJETA_CREDITO' | 'TARJETA_DEBITO' | 'PSE' | 'NEQUI' | 'DAVIPLATA'
 
 export interface Pago {
   id: number
   id_usuario: number
   monto: number
-  fecha: string
-  metodo: MetodoPago
-  estado: EstadoPago
-  referencia?: string
+  fecha_pago: string
+  metodo_pago: MetodoPago
+  estado_pago: EstadoPago
+  fecha_vencimiento: string
 }
 
 // Tipos de empleados

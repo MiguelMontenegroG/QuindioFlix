@@ -9,9 +9,18 @@ from ..schemas.pago import Pago, PagoCreate
 from ..schemas.usuario import Plan, Usuario
 
 
+
+
+def _to_date(val):
+    if val is None:
+        return None
+    if hasattr(val, 'date') and callable(val.date):
+        return val.date()
+    return val
+
 def listar_planes() -> list[Plan]:
     """Lista todos los planes disponibles."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -26,7 +35,7 @@ def listar_planes() -> list[Plan]:
     except oracledb.DatabaseError as e:
         handle_oracle_error(e)
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")
 
 
 def obtener_plan(id_plan: int) -> Plan | None:
@@ -49,12 +58,12 @@ def obtener_plan(id_plan: int) -> Plan | None:
     except oracledb.DatabaseError as e:
         handle_oracle_error(e)
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")
 
 
 def cambiar_plan(id_usuario: int, id_plan_nuevo: int, metodo_pago: str = "PSE") -> Usuario:
     """Ejecuta SP_CAMBIAR_PLAN para cambiar el plan de un usuario."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.callproc(f"{fq('SP_CAMBIAR_PLAN')}", [id_usuario, id_plan_nuevo, metodo_pago])
@@ -79,12 +88,12 @@ def cambiar_plan(id_usuario: int, id_plan_nuevo: int, metodo_pago: str = "PSE") 
         conn.rollback()
         handle_oracle_error(e)
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")
 
 
 def calcular_monto(id_usuario: int) -> float:
     """Calcula el monto a pagar usando FN_CALCULAR_MONTO."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(f"SELECT {fq('FN_CALCULAR_MONTO')}(:1) FROM DUAL", [id_usuario])
@@ -94,42 +103,42 @@ def calcular_monto(id_usuario: int) -> float:
     except oracledb.DatabaseError as e:
         handle_oracle_error(e)
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")
 
 
 def registrar_pago(data: PagoCreate) -> Pago:
     """Registra un nuevo pago."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         now = datetime.now()
         cursor.execute(
             f"""INSERT INTO {fq('PAGOS')} (id_pago, id_usuario, fecha_pago, monto, metodo_pago, estado_pago, fecha_vencimiento)
-               VALUES (seq_pagos.NEXTVAL, :1, :2, :3, :4, :5, :6)
-               RETURNING id_pago, fecha_pago INTO :7, :8""",
+               VALUES (seq_pagos.NEXTVAL, :1, :2, :3, :4, :5, :6)""",
             [data.id_usuario, now, data.monto, data.metodo_pago,
-             data.estado_pago, data.fecha_vencimiento, cursor.var(int), cursor.var(str)]
+             data.estado_pago, data.fecha_vencimiento]
         )
-        id_pago, fecha_pago = cursor.fetchone()
+        cursor.execute(f"SELECT seq_pagos.CURRVAL FROM DUAL")
+        id_pago = cursor.fetchone()[0]
         conn.commit()
         cursor.close()
 
         return Pago(
             id_pago=id_pago, id_usuario=data.id_usuario,
-            fecha_pago=fecha_pago, monto=data.monto,
+            fecha_pago=_to_date(now), monto=data.monto,
             metodo_pago=data.metodo_pago, estado_pago=data.estado_pago,
-            fecha_vencimiento=data.fecha_vencimiento
+            fecha_vencimiento=_to_date(data.fecha_vencimiento)
         )
     except oracledb.DatabaseError as e:
         conn.rollback()
         handle_oracle_error(e)
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")
 
 
 def pagos_por_usuario(id_usuario: int) -> list[Pago]:
     """Obtiene el historial de pagos de un usuario."""
-    conn = get_connection("soporte")
+    conn = get_connection("admin")
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -138,13 +147,13 @@ def pagos_por_usuario(id_usuario: int) -> list[Pago]:
             [id_usuario]
         )
         pagos = [Pago(
-            id_pago=r[0], id_usuario=r[1], fecha_pago=r[2],
+            id_pago=r[0], id_usuario=r[1], fecha_pago=_to_date(r[2]),
             monto=float(r[3]), metodo_pago=r[4], estado_pago=r[5],
-            fecha_vencimiento=r[6]
+            fecha_vencimiento=_to_date(r[6])
         ) for r in cursor]
         cursor.close()
         return pagos
     except oracledb.DatabaseError as e:
         handle_oracle_error(e)
     finally:
-        release_connection(conn, "soporte")
+        release_connection(conn, "admin")

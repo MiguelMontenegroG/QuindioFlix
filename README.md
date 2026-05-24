@@ -103,6 +103,59 @@ npm run dev
 
 La aplicacion estara disponible en `http://localhost:3000` y la API en `http://localhost:8000/docs`.
 
+- Panel de moderacion de reportes de contenido
+
+## Apagar los servicios
+
+Para detener correctamente los servidores del proyecto:
+
+### Backend (FastAPI)
+
+En la terminal donde se esta ejecutando el backend, presionar `Ctrl + C` en Windows/Linux (`Cmd + C` en macOS).
+
+Si la terminal se cerro o el proceso quedo en segundo plano:
+
+```powershell
+# Windows - Buscar y detener el proceso de uvicorn
+Get-Process -Name python* | Where-Object { $_.CommandLine -match "uvicorn" } | Stop-Process -Force
+```
+
+```bash
+# Linux/macOS - Buscar y detener el proceso
+ps aux | grep uvicorn | grep -v grep | awk '{print $2}' | xargs kill -9
+```
+
+### Frontend (Next.js)
+
+En la terminal donde se esta ejecutando el frontend, presionar `Ctrl + C` (`Cmd + C` en macOS).
+
+Si se ejecuto con `npx next dev` o `npm run dev`, el proceso suele llamarse `node`:
+
+```powershell
+# Windows - Buscar y detener el proceso de Next.js
+Get-Process -Name node* | Where-Object { $_.CommandLine -match "next" } | Stop-Process -Force
+```
+
+```bash
+# Linux/macOS
+ps aux | grep next | grep -v grep | awk '{print $2}' | xargs kill -9
+```
+
+Para detener todos los procesos de Python o Node de una sola vez (cuidado con otros proyectos):
+
+```powershell
+# Windows
+Get-Process -Name python* | Stop-Process -Force
+Get-Process -Name node* | Stop-Process -Force
+```
+
+```bash
+# Linux/macOS
+killall python3 node 2>/dev/null; killall python node 2>/dev/null
+```
+
+> **Nota:** En Windows, al usar `Get-Process` y `Stop-Process`, si no se usa `-Force` el sistema preguntara antes de cerrar cada proceso.
+
 ## Variables de entorno
 
 Crear `backend/.env` con las siguientes variables (ver `.env.example` para valores de ejemplo):

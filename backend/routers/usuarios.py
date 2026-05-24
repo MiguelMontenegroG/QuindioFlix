@@ -176,10 +176,10 @@ def crear_perfil(id_usuario: int, data: PerfilCreateRequest):
         cursor = conn.cursor()
         cursor.execute(
             f"""INSERT INTO {fq('PERFILES')} (id_perfil, id_usuario, nombre_perfil, avatar, tipo)
-               VALUES (seq_perfiles.NEXTVAL, :1, :2, :3, :4)
-               RETURNING id_perfil INTO :5""",
-            [id_usuario, data.nombre_perfil, data.avatar, data.tipo, cursor.var(int)]
+               VALUES (seq_perfiles.NEXTVAL, :1, :2, :3, :4)""",
+            [id_usuario, data.nombre_perfil, data.avatar, data.tipo]
         )
+        cursor.execute(f"SELECT seq_perfiles.CURRVAL FROM DUAL")
         id_perfil = cursor.fetchone()[0]
         conn.commit()
         cursor.close()

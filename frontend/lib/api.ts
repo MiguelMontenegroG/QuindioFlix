@@ -540,9 +540,30 @@ export const planesAPI = {
 }
 
 // ==================== PAGOS ====================
+function mapBackendPagoToFrontend(bp: any): Pago {
+  return {
+    id: bp.id_pago ?? bp.id,
+    id_usuario: bp.id_usuario,
+    monto: bp.monto,
+    fecha_pago: bp.fecha_pago,
+    metodo_pago: bp.metodo_pago,
+    estado_pago: bp.estado_pago,
+    fecha_vencimiento: bp.fecha_vencimiento,
+  }
+}
+
 export const pagosAPI = {
   obtenerPorUsuario: (idUsuario: number) =>
-    fetchAPI<Pago[]>(`/pagos/usuarios/${idUsuario}`),
+    fetchAPI<any[]>(`/pagos/usuarios/${idUsuario}`).then(data => data.map(mapBackendPagoToFrontend)),
+
+  crear: (data: { id_usuario: number; monto: number; metodo_pago: string; fecha_vencimiento: string; estado_pago?: string }) =>
+    fetchAPI<any>('/pagos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }).then(mapBackendPagoToFrontend),
+
+  calcularMonto: (idUsuario: number) =>
+    fetchAPI<{ id_usuario: number; monto: number }>(`/pagos/calcular-monto/${idUsuario}`),
 
   // Para soporte
   obtenerTodos: (params?: { estado?: string; pagina?: number }) => {
