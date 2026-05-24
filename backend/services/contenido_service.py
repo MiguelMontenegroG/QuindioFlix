@@ -34,7 +34,9 @@ def _row_to_contenido(row) -> Contenido:
         id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
         duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
         fecha_agregado=_to_date(row[6]), es_original=row[7],
-        id_categoria=row[8], id_empleado_resp=row[9]
+        id_categoria=row[8], id_empleado_resp=row[9],
+        poster_url=row[10] if len(row) > 10 else None,
+        banner_url=row[11] if len(row) > 11 else None,
     )
 
 
@@ -77,6 +79,7 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
             SELECT c.id_contenido, c.titulo, c.anio_lanzamiento, c.duracion,
                    c.sinopsis, c.clasificacion_edad, c.fecha_agregado, c.es_original,
                    c.id_categoria, c.id_empleado_resp,
+                   c.poster_url, c.banner_url,
                    cat.nombre_categoria, cat.descripcion
             FROM {fq('CONTENIDO')} c
             LEFT JOIN {fq('CATEGORIAS')} cat ON cat.id_categoria = c.id_categoria
@@ -96,10 +99,11 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
                 duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
                 fecha_agregado=_to_date(row[6]), es_original=row[7],
                 id_categoria=row[8], id_empleado_resp=row[9],
+                poster_url=row[10], banner_url=row[11],
             )
-            if row[10]:
+            if row[12]:
                 contenido.categoria = Categoria(
-                    id_categoria=row[8], nombre_categoria=row[10], descripcion=row[11]
+                    id_categoria=row[8], nombre_categoria=row[12], descripcion=row[13]
                 )
             resultados.append(contenido)
 
@@ -120,6 +124,7 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
             f"""SELECT c.id_contenido, c.titulo, c.anio_lanzamiento, c.duracion,
                       c.sinopsis, c.clasificacion_edad, c.fecha_agregado, c.es_original,
                       c.id_categoria, c.id_empleado_resp,
+                      c.poster_url, c.banner_url,
                       cat.nombre_categoria, cat.descripcion
                FROM {fq('CONTENIDO')} c
                LEFT JOIN {fq('CATEGORIAS')} cat ON cat.id_categoria = c.id_categoria
@@ -136,11 +141,12 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
             duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
             fecha_agregado=_to_date(row[6]), es_original=row[7],
             id_categoria=row[8], id_empleado_resp=row[9],
+            poster_url=row[10], banner_url=row[11],
         )
         # Asignar categoria como objeto
-        if row[10]:
+        if row[12]:
             contenido.categoria = Categoria(
-                id_categoria=row[8], nombre_categoria=row[10], descripcion=row[11]
+                id_categoria=row[8], nombre_categoria=row[12], descripcion=row[13]
             )
 
         cursor.execute(
@@ -187,12 +193,14 @@ def crear_contenido(data: ContenidoCreate) -> Contenido:
         id_var = cursor.var(int)
         cursor.execute(
             f"""INSERT INTO {fq('CONTENIDO')} (id_contenido, titulo, anio_lanzamiento, duracion,
-               sinopsis, clasificacion_edad, es_original, id_categoria, id_empleado_resp)
-               VALUES (seq_contenido.NEXTVAL, :1, :2, :3, :4, :5, :6, :7, :8)
-               RETURNING id_contenido INTO :9""",
+               sinopsis, clasificacion_edad, es_original, id_categoria, id_empleado_resp,
+               poster_url, banner_url)
+               VALUES (seq_contenido.NEXTVAL, :1, :2, :3, :4, :5, :6, :7, :8, :9, :10)
+               RETURNING id_contenido INTO :11""",
             [data.titulo, data.anio_lanzamiento, data.duracion,
              data.sinopsis, data.clasificacion_edad, data.es_original,
              data.id_categoria, data.id_empleado_resp,
+             data.poster_url, data.banner_url,
              id_var]
         )
         id_contenido = id_var.getvalue()[0]
@@ -222,7 +230,8 @@ def actualizar_contenido(id_contenido: int, data: ContenidoUpdate) -> Contenido 
         binds = {"id": id_contenido}
 
         for field in ["titulo", "anio_lanzamiento", "duracion", "sinopsis",
-                       "clasificacion_edad", "es_original", "id_categoria", "id_empleado_resp"]:
+                       "clasificacion_edad", "es_original", "id_categoria", "id_empleado_resp",
+                       "poster_url", "banner_url"]:
             value = getattr(data, field, None)
             if value is not None:
                 updates.append(f"{field} = :{field}")

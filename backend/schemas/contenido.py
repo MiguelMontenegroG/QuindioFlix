@@ -41,6 +41,8 @@ class ContenidoBase(BaseModel):
     es_original: str = Field(default="N", pattern=r"^[SN]$")
     id_categoria: int
     id_empleado_resp: int = Field(default=4, description="FK a EMPLEADOS (default: Directora de Contenido)")
+    poster_url: Optional[str] = Field(None, max_length=500)
+    banner_url: Optional[str] = Field(None, max_length=500)
 
 
 class ContenidoCreate(ContenidoBase):
@@ -57,6 +59,8 @@ class ContenidoUpdate(BaseModel):
     id_categoria: Optional[int] = None
     id_empleado_resp: Optional[int] = None
     generos: Optional[list[int]] = None
+    poster_url: Optional[str] = Field(None, max_length=500)
+    banner_url: Optional[str] = Field(None, max_length=500)
 
 
 class Contenido(ContenidoBase):

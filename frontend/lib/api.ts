@@ -183,7 +183,7 @@ function mapBackendContenidoToFrontend(bc: any): Contenido {
       id: g.id_genero ?? g.id,
       nombre: g.nombre_genero ?? g.nombre,
     })) : [],
-    poster_url: bc.poster_url || `https://placehold.co/300x450?text=${encodeURIComponent(String(bc.titulo || '').slice(0, 20) || '?')}`,
+    poster_url: bc.poster_url || bc.POSTER_URL || `https://placehold.co/300x450?text=${encodeURIComponent(String(bc.titulo || '').slice(0, 20) || '?')}`,
     banner_url: bc.banner_url,
     trailer_url: bc.trailer_url,
     es_original: bc.es_original === 'S' || bc.es_original === true,
@@ -206,9 +206,15 @@ function mapFrontendContenidoToBackend(fc: any): any {
     id_categoria: Object.entries(CATEGORIA_MAP).find(([, v]) => v === fc.categoria)?.[0] || 1,
     generos: fc.generos?.map((g: any) => g.id ?? g) || [],
   }
-  // Solo incluir id_empleado_resp si fue proporcionado explicitamente
+  // Solo incluir campos opcionales si fueron proporcionados explicitamente
   if (fc.id_empleado_resp !== undefined) {
     backend.id_empleado_resp = fc.id_empleado_resp
+  }
+  if (fc.poster_url) {
+    backend.poster_url = fc.poster_url
+  }
+  if (fc.banner_url) {
+    backend.banner_url = fc.banner_url
   }
   return backend
 }

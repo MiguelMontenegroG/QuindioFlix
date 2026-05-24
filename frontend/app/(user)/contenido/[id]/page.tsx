@@ -1,6 +1,6 @@
-﻿'use client'
+'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
@@ -35,26 +35,75 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { getPerfilActivo } from '@/lib/auth'
-import { mockContenido, mockTemporadas, mockPerfiles } from '@/lib/mock-data'
-import { reportesContenidoAPI } from '@/lib/api'
+import { contenidoAPI, temporadasAPI, reportesContenidoAPI, favoritosAPI } from '@/lib/api'
+import type { Contenido, Temporada, Perfil } from '@/lib/types'
+import { mockPerfiles } from '@/lib/mock-data'
 
 export default function ContenidoDetallePage() {
   const params = useParams()
   const router = useRouter()
   const id = Number(params.id)
 
-  const contenido = mockContenido.find((c) => c.id === id)
-  const temporadas = mockTemporadas.filter((t) => t.id_contenido === id)
-
+  const [contenido, setContenido] = useState<Contenido | null>(null)
+  const [temporadas, setTemporadas] = useState<Temporada[]>([])
+  const [relacionados, setRelacionados] = useState<Contenido[]>([])
+  const [loading, setLoading] = useState(true)
   const [isFavorite, setIsFavorite] = useState(false)
   const [userRating, setUserRating] = useState<number | null>(null)
-  const [selectedTemporada, setSelectedTemporada] = useState(temporadas[0]?.id || null)
+  const [selectedTemporada, setSelectedTemporada] = useState<number | null>(null)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
   const [isRatingDialogOpen, setIsRatingDialogOpen] = useState(false)
   const [reportMotivo, setReportMotivo] = useState('')
   const [reportDescripcion, setReportDescripcion] = useState('')
   const [isSendingReport, setIsSendingReport] = useState(false)
   const [perfilActivo, setPerfilActivoState] = useState<{ id: number } | null>(null)
+
+  const cargarContenido = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await contenidoAPI.obtenerPorId(id)
+      setContenido(data)
+
+      // Cargar temporadas si es serie
+      const esSerie = data.categoria === 'Serie' || data.categoria === 'Podcast'
+      if (esSerie) {
+        try {
+          const temps = await temporadasAPI.obtenerPorContenido(id)
+          setTemporadas(temps)
+          if (temps.length > 0) {
+            setSelectedTemporada(temps[0].id)
+          }
+        } catch {
+          setTemporadas([])
+        }
+      }
+
+      // Cargar relacionados (misma categoria)
+      try {
+        const todos = await contenidoAPI.obtenerTodos({ categoria: data.categoria, por_pagina: 50 })
+        const filtrados = todos.data.filter((c: Contenido) => c.id !== id).slice(0, 10)
+        setRelacionados(filtrados)
+      } catch {
+        setRelacionados([])
+      }
+
+      // Verificar si el contenido esta en favoritos del perfil activo
+      const perfil = getPerfilActivo()
+      if (perfil) {
+        try {
+          const favs = await favoritosAPI.obtenerPorPerfil(perfil.id)
+          const esFav = favs.some((f: any) => f.id_contenido === id)
+          setIsFavorite(esFav)
+        } catch {
+          setIsFavorite(false)
+        }
+      }
+    } catch {
+      setContenido(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
 
   useEffect(() => {
     const perfil = getPerfilActivo()
@@ -63,25 +112,61 @@ export default function ContenidoDetallePage() {
     }
   }, [])
 
+  useEffect(() => {
+    cargarContenido()
+  }, [cargarContenido])
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [id])
+
+  const toggleFavorite = useCallback(async () => {
+    const perfil = getPerfilActivo()
+    if (!perfil) {
+      toast.error("Debes iniciar sesion para guardar en tu lista")
+      return
+    }
+    try {
+      if (isFavorite) {
+        await favoritosAPI.eliminar(perfil.id, id)
+        setIsFavorite(false)
+        toast.success("Eliminado de Mi lista")
+      } else {
+        await favoritosAPI.agregar(perfil.id, id)
+        setIsFavorite(true)
+        toast.success("Agregado a Mi lista")
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Error desconocido"
+      toast.error("Error al actualizar Mi lista: " + msg)
+    }
+  }, [isFavorite, id])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Cargando contenido...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!contenido) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Contenido no encontrado</h1>
+          <p className="text-muted-foreground mb-6">El contenido que buscas no existe o ha sido eliminado.</p>
           <Button onClick={() => router.push('/inicio')}>Volver al inicio</Button>
         </div>
       </div>
     )
   }
 
-  const relacionados = mockContenido
-    .filter((c) => c.id !== id && c.generos.some((g) =>
-      contenido.generos.map((cg) => cg.id).includes(g.id)
-    ))
-    .slice(0, 10)
-
-  const temporadaActual = temporadas.find((t) => t.id === selectedTemporada)
   const esSerie = contenido.categoria === 'Serie' || contenido.categoria === 'Podcast'
+  const temporadaActual = temporadas.find((t) => t.id === selectedTemporada)
 
   const handleReport = async () => {
     if (!reportMotivo) {
@@ -93,7 +178,8 @@ export default function ContenidoDetallePage() {
       await reportesContenidoAPI.crear({
         id_perfil: (getPerfilActivo()?.id) || 1,
         id_contenido: id,
-        motivo: reportMotivo, descripcion: reportDescripcion || undefined,
+        motivo: reportMotivo,
+        descripcion: reportDescripcion || undefined,
       })
       toast.success('Reporte enviado. Nuestro equipo lo revisara pronto.')
       setIsReportDialogOpen(false)
@@ -116,7 +202,7 @@ export default function ContenidoDetallePage() {
   return (
     <div className="min-h-screen bg-background">
       <MainNav
-        perfil={mockPerfiles[0]}
+        perfil={perfilActivo as Perfil || mockPerfiles[0]}
         perfiles={mockPerfiles}
         onLogout={() => router.push('/login')}
       />
@@ -153,7 +239,7 @@ export default function ContenidoDetallePage() {
 
             {/* Meta */}
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              {contenido.calificacion_promedio && (
+              {contenido.calificacion_promedio != null && (
                 <span className="flex items-center gap-1 text-yellow-400">
                   <Star className="h-4 w-4 fill-current" />
                   {contenido.calificacion_promedio.toFixed(1)}
@@ -161,9 +247,9 @@ export default function ContenidoDetallePage() {
               )}
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
-                {contenido.anio}
+                {contenido.año}
               </span>
-              {contenido.duracion_minutos && (
+              {contenido.duracion_minutos != null && contenido.duracion_minutos > 0 && (
                 <span className="flex items-center gap-1">
                   <Clock className="h-4 w-4" />
                   {esSerie
@@ -197,7 +283,7 @@ export default function ContenidoDetallePage() {
                 size="lg"
                 variant="secondary"
                 className="bg-white/20 hover:bg-white/30"
-                onClick={() => setIsFavorite(!isFavorite)}
+                onClick={toggleFavorite}
               >
                 {isFavorite ? (
                   <Check className="mr-2 h-5 w-5 text-green-400" />
@@ -299,7 +385,7 @@ export default function ContenidoDetallePage() {
                       {isSendingReport ? (
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</>
                       ) : (
-                        "Enviar reporte"
+                        'Enviar reporte'
                       )}
                     </Button>
                   </div>
@@ -397,25 +483,29 @@ export default function ContenidoDetallePage() {
             </TabsContent>
 
             <TabsContent value="relacionados">
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {relacionados.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={'/contenido/' + item.id}
-                    className="group"
-                  >
-                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2">
-                      <Image
-                        src={item.poster_url}
-                        alt={item.titulo}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-                    <h4 className="text-sm font-medium truncate">{item.titulo}</h4>
-                  </Link>
-                ))}
-              </div>
+              {relacionados.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {relacionados.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={'/contenido/' + item.id}
+                      className="group"
+                    >
+                      <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2">
+                        <Image
+                          src={item.poster_url}
+                          alt={item.titulo}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                      <h4 className="text-sm font-medium truncate">{item.titulo}</h4>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No hay titulos similares disponibles.</p>
+              )}
             </TabsContent>
 
             <TabsContent value="detalles">
@@ -425,7 +515,7 @@ export default function ContenidoDetallePage() {
                   <dl className="space-y-3">
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Anio</dt>
-                      <dd>{contenido.anio}</dd>
+                      <dd>{contenido.año}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Categoria</dt>
@@ -439,7 +529,7 @@ export default function ContenidoDetallePage() {
                       <dt className="text-muted-foreground">Temporadas</dt>
                       <dd>{temporadas.length}</dd>
                     </div>
-                    {contenido.total_reproducciones && (
+                    {contenido.total_reproducciones != null && (
                       <div className="flex justify-between">
                         <dt className="text-muted-foreground">Reproducciones</dt>
                         <dd>{contenido.total_reproducciones.toLocaleString()}</dd>
@@ -470,4 +560,3 @@ export default function ContenidoDetallePage() {
     </div>
   )
 }
-
