@@ -48,22 +48,22 @@ export default function LandingPage() {
   const planes = [
     {
       nombre: 'Basico',
-      precio: '$17.900',
-      calidad: 'HD',
+      precio: '$14.900',
+      calidad: 'SD',
       pantallas: 1,
       perfiles: 2,
     },
     {
       nombre: 'Estandar',
-      precio: '$33.900',
-      calidad: 'Full HD',
+      precio: '$24.900',
+      calidad: 'HD',
       pantallas: 2,
       perfiles: 3,
       popular: true,
     },
     {
       nombre: 'Premium',
-      precio: '$49.900',
+      precio: '$34.900',
       calidad: '4K',
       pantallas: 4,
       perfiles: 5,
@@ -272,7 +272,7 @@ export default function LandingPage() {
               },
               {
                 q: 'Cuanto cuesta?',
-                a: 'Ofrecemos 3 planes: Basico ($17.900/mes), Estandar ($33.900/mes) y Premium ($49.900/mes). Todos incluyen acceso a todo el catalogo.',
+                a: 'Ofrecemos 3 planes: Basico ($14.900/mes), Estandar ($24.900/mes) y Premium ($34.900/mes). Todos incluyen acceso a todo el catalogo.',
               },
               {
                 q: 'Donde puedo ver?',

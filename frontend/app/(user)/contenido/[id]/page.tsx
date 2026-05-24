@@ -1,6 +1,6 @@
-'use client'
+﻿'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
@@ -15,6 +15,7 @@ import {
   Star,
   Clock,
   Calendar,
+  Loader2,
 } from 'lucide-react'
 import { MainNav } from '@/components/shared/main-nav'
 import { ContentCarousel } from '@/components/content/content-carousel'
@@ -33,16 +34,18 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { getPerfilActivo } from '@/lib/auth'
 import { mockContenido, mockTemporadas, mockPerfiles } from '@/lib/mock-data'
+import { reportesContenidoAPI } from '@/lib/api'
 
 export default function ContenidoDetallePage() {
   const params = useParams()
   const router = useRouter()
   const id = Number(params.id)
-  
+
   const contenido = mockContenido.find((c) => c.id === id)
   const temporadas = mockTemporadas.filter((t) => t.id_contenido === id)
-  
+
   const [isFavorite, setIsFavorite] = useState(false)
   const [userRating, setUserRating] = useState<number | null>(null)
   const [selectedTemporada, setSelectedTemporada] = useState(temporadas[0]?.id || null)
@@ -50,6 +53,15 @@ export default function ContenidoDetallePage() {
   const [isRatingDialogOpen, setIsRatingDialogOpen] = useState(false)
   const [reportMotivo, setReportMotivo] = useState('')
   const [reportDescripcion, setReportDescripcion] = useState('')
+  const [isSendingReport, setIsSendingReport] = useState(false)
+  const [perfilActivo, setPerfilActivoState] = useState<{ id: number } | null>(null)
+
+  useEffect(() => {
+    const perfil = getPerfilActivo()
+    if (perfil) {
+      setPerfilActivoState(perfil)
+    }
+  }, [])
 
   if (!contenido) {
     return (
@@ -63,7 +75,7 @@ export default function ContenidoDetallePage() {
   }
 
   const relacionados = mockContenido
-    .filter((c) => c.id !== id && c.generos.some((g) => 
+    .filter((c) => c.id !== id && c.generos.some((g) =>
       contenido.generos.map((cg) => cg.id).includes(g.id)
     ))
     .slice(0, 10)
@@ -71,20 +83,33 @@ export default function ContenidoDetallePage() {
   const temporadaActual = temporadas.find((t) => t.id === selectedTemporada)
   const esSerie = contenido.categoria === 'Serie' || contenido.categoria === 'Podcast'
 
-  const handleReport = () => {
+  const handleReport = async () => {
     if (!reportMotivo) {
       toast.error('Selecciona un motivo para el reporte')
       return
     }
-    toast.success('Reporte enviado. Nuestro equipo lo revisará pronto.')
-    setIsReportDialogOpen(false)
-    setReportMotivo('')
-    setReportDescripcion('')
+    setIsSendingReport(true)
+    try {
+      await reportesContenidoAPI.crear({
+        id_perfil: (getPerfilActivo()?.id) || 1,
+        id_contenido: id,
+        motivo: reportMotivo, descripcion: reportDescripcion || undefined,
+      })
+      toast.success('Reporte enviado. Nuestro equipo lo revisara pronto.')
+      setIsReportDialogOpen(false)
+      setReportMotivo('')
+      setReportDescripcion('')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error desconocido'
+      toast.error('Error al enviar el reporte: ' + msg)
+    } finally {
+      setIsSendingReport(false)
+    }
   }
 
   const handleRating = (rating: number) => {
     setUserRating(rating)
-    toast.success(`Has calificado "${contenido.titulo}" con ${rating} estrellas`)
+    toast.success('Has calificado "' + contenido.titulo + '" con ' + rating + ' estrellas')
     setIsRatingDialogOpen(false)
   }
 
@@ -136,14 +161,14 @@ export default function ContenidoDetallePage() {
               )}
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
-                {contenido.año}
+                {contenido.anio}
               </span>
               {contenido.duracion_minutos && (
                 <span className="flex items-center gap-1">
                   <Clock className="h-4 w-4" />
-                  {esSerie 
-                    ? `${contenido.duracion_minutos} min/ep`
-                    : `${Math.floor(contenido.duracion_minutos / 60)}h ${contenido.duracion_minutos % 60}min`
+                  {esSerie
+                    ? contenido.duracion_minutos + ' min/ep'
+                    : Math.floor(contenido.duracion_minutos / 60) + 'h ' + (contenido.duracion_minutos % 60) + 'min'
                   }
                 </span>
               )}
@@ -162,7 +187,7 @@ export default function ContenidoDetallePage() {
                 className="bg-white text-black hover:bg-white/90 font-semibold"
                 asChild
               >
-                <Link href={`/ver/${contenido.id}`}>
+                <Link href={'/ver/' + contenido.id}>
                   <Play className="mr-2 h-5 w-5 fill-current" />
                   Reproducir
                 </Link>
@@ -194,7 +219,7 @@ export default function ContenidoDetallePage() {
                   </DialogHeader>
                   <div className="py-6">
                     <p className="text-sm text-muted-foreground mb-4">
-                      Selecciona tu calificación (solo disponible si has visto al menos el 50% del contenido)
+                      Selecciona tu calificacion (solo disponible si has visto al menos el 50% del contenido)
                     </p>
                     <div className="flex justify-center gap-2">
                       {[1, 2, 3, 4, 5].map((rating) => (
@@ -236,7 +261,7 @@ export default function ContenidoDetallePage() {
                     <Flag className="h-5 w-5" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-card">
+                <DialogContent className="bg-card" aria-describedby={undefined}>
                   <DialogHeader>
                     <DialogTitle>Reportar contenido</DialogTitle>
                   </DialogHeader>
@@ -250,7 +275,7 @@ export default function ContenidoDetallePage() {
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="error_tecnico" id="r2" />
-                          <Label htmlFor="r2" className="cursor-pointer">Error técnico</Label>
+                          <Label htmlFor="r2" className="cursor-pointer">Error tecnico</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="derechos_autor" id="r3" />
@@ -263,15 +288,19 @@ export default function ContenidoDetallePage() {
                       </RadioGroup>
                     </div>
                     <div className="space-y-2">
-                      <Label>Descripción (opcional)</Label>
+                      <Label>Descripcion (opcional)</Label>
                       <Textarea
                         placeholder="Describe el problema..."
                         value={reportDescripcion}
                         onChange={(e) => setReportDescripcion(e.target.value)}
                       />
                     </div>
-                    <Button onClick={handleReport} className="w-full">
-                      Enviar reporte
+                    <Button onClick={handleReport} className="w-full" disabled={isSendingReport}>
+                      {isSendingReport ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</>
+                      ) : (
+                        "Enviar reporte"
+                      )}
                     </Button>
                   </div>
                 </DialogContent>
@@ -288,7 +317,7 @@ export default function ContenidoDetallePage() {
               {contenido.generos.map((genero) => (
                 <Link
                   key={genero.id}
-                  href={`/genero/${genero.id}`}
+                  href={'/genero/' + genero.id}
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
                   {genero.nombre}
@@ -305,7 +334,7 @@ export default function ContenidoDetallePage() {
           <Tabs defaultValue="episodios" className="space-y-6">
             <TabsList className="bg-secondary/50">
               <TabsTrigger value="episodios">Episodios</TabsTrigger>
-              <TabsTrigger value="relacionados">Títulos similares</TabsTrigger>
+              <TabsTrigger value="relacionados">Titulos similares</TabsTrigger>
               <TabsTrigger value="detalles">Detalles</TabsTrigger>
             </TabsList>
 
@@ -333,7 +362,7 @@ export default function ContenidoDetallePage() {
                 {temporadaActual?.episodios.map((episodio) => (
                   <Link
                     key={episodio.id}
-                    href={`/ver/${contenido.id}?ep=${episodio.id}`}
+                    href={'/ver/' + contenido.id + '?ep=' + episodio.id}
                     className="flex gap-4 p-4 rounded-lg bg-card hover:bg-card-hover transition-colors group"
                   >
                     <div className="relative w-40 aspect-video rounded overflow-hidden shrink-0">
@@ -372,7 +401,7 @@ export default function ContenidoDetallePage() {
                 {relacionados.map((item) => (
                   <Link
                     key={item.id}
-                    href={`/contenido/${item.id}`}
+                    href={'/contenido/' + item.id}
                     className="group"
                   >
                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2">
@@ -392,18 +421,18 @@ export default function ContenidoDetallePage() {
             <TabsContent value="detalles">
               <div className="grid md:grid-cols-2 gap-8">
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">Información</h3>
+                  <h3 className="text-lg font-semibold mb-4">Informacion</h3>
                   <dl className="space-y-3">
                     <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Año</dt>
-                      <dd>{contenido.año}</dd>
+                      <dt className="text-muted-foreground">Anio</dt>
+                      <dd>{contenido.anio}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Categoría</dt>
+                      <dt className="text-muted-foreground">Categoria</dt>
                       <dd className="capitalize">{contenido.categoria}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Clasificación</dt>
+                      <dt className="text-muted-foreground">Clasificacion</dt>
                       <dd>{contenido.clasificacion_edad}</dd>
                     </div>
                     <div className="flex justify-between">
@@ -419,7 +448,7 @@ export default function ContenidoDetallePage() {
                   </dl>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">Géneros</h3>
+                  <h3 className="text-lg font-semibold mb-4">Generos</h3>
                   <div className="flex flex-wrap gap-2">
                     {contenido.generos.map((g) => (
                       <Badge key={g.id} variant="secondary">{g.nombre}</Badge>
@@ -432,7 +461,7 @@ export default function ContenidoDetallePage() {
         ) : (
           <div className="space-y-8">
             <ContentCarousel
-              title="Títulos similares"
+              title="Titulos similares"
               contenido={relacionados}
             />
           </div>
@@ -441,3 +470,4 @@ export default function ContenidoDetallePage() {
     </div>
   )
 }
+

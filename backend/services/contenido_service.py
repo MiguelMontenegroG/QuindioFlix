@@ -20,11 +20,20 @@ def _read_clob(val):
     return str(val)
 
 
+def _to_date(val):
+    """Convierte datetime o string a date para Pydantic v2."""
+    if val is None:
+        return None
+    if hasattr(val, 'date'):
+        return val.date()
+    return val
+
+
 def _row_to_contenido(row) -> Contenido:
     return Contenido(
         id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
         duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
-        fecha_agregado=row[6], es_original=row[7],
+        fecha_agregado=_to_date(row[6]), es_original=row[7],
         id_categoria=row[8], id_empleado_resp=row[9]
     )
 
@@ -85,7 +94,7 @@ def listar_contenido(params: BusquedaParams) -> tuple[list[Contenido], int]:
             contenido = Contenido(
                 id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
                 duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
-                fecha_agregado=row[6], es_original=row[7],
+                fecha_agregado=_to_date(row[6]), es_original=row[7],
                 id_categoria=row[8], id_empleado_resp=row[9],
             )
             if row[10]:
@@ -125,7 +134,7 @@ def obtener_contenido_por_id(id_contenido: int) -> Contenido | None:
         contenido = Contenido(
             id_contenido=row[0], titulo=row[1], anio_lanzamiento=row[2],
             duracion=row[3], sinopsis=_read_clob(row[4]), clasificacion_edad=row[5],
-            fecha_agregado=row[6], es_original=row[7],
+            fecha_agregado=_to_date(row[6]), es_original=row[7],
             id_categoria=row[8], id_empleado_resp=row[9],
         )
         # Asignar categoria como objeto
@@ -175,6 +184,7 @@ def crear_contenido(data: ContenidoCreate) -> Contenido:
     conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
+        id_var = cursor.var(int)
         cursor.execute(
             f"""INSERT INTO {fq('CONTENIDO')} (id_contenido, titulo, anio_lanzamiento, duracion,
                sinopsis, clasificacion_edad, es_original, id_categoria, id_empleado_resp)
@@ -183,9 +193,9 @@ def crear_contenido(data: ContenidoCreate) -> Contenido:
             [data.titulo, data.anio_lanzamiento, data.duracion,
              data.sinopsis, data.clasificacion_edad, data.es_original,
              data.id_categoria, data.id_empleado_resp,
-             cursor.var(int)]
+             id_var]
         )
-        id_contenido = cursor.fetchone()[0]
+        id_contenido = id_var.getvalue()[0]
 
         for gen_id in data.generos:
             cursor.execute(
@@ -306,15 +316,16 @@ def crear_temporada(data: TemporadaCreate) -> Temporada:
     conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
+        id_var = cursor.var(int)
         cursor.execute(
             f"""INSERT INTO {fq('TEMPORADAS')} (id_temporada, id_contenido, numero_temporada,
                titulo_temporada, anio)
                VALUES (seq_temporadas.NEXTVAL, :1, :2, :3, :4)
                RETURNING id_temporada INTO :5""",
             [data.id_contenido, data.numero_temporada,
-             data.titulo_temporada, data.anio, cursor.var(int)]
+             data.titulo_temporada, data.anio, id_var]
         )
-        id_temporada = cursor.fetchone()[0]
+        id_temporada = id_var.getvalue()[0]
         conn.commit()
         cursor.close()
         return Temporada(
@@ -335,15 +346,16 @@ def crear_episodio(data: EpisodioCreate) -> Episodio:
     conn = get_connection("contenido")
     try:
         cursor = conn.cursor()
+        id_var = cursor.var(int)
         cursor.execute(
             f"""INSERT INTO {fq('EPISODIOS')} (id_episodio, id_temporada, numero_episodio,
                titulo_episodio, duracion, sinopsis_ep)
                VALUES (seq_episodios.NEXTVAL, :1, :2, :3, :4, :5)
                RETURNING id_episodio INTO :6""",
             [data.id_temporada, data.numero_episodio, data.titulo_episodio,
-             data.duracion, data.sinopsis_ep, cursor.var(int)]
+             data.duracion, data.sinopsis_ep, id_var]
         )
-        id_episodio = cursor.fetchone()[0]
+        id_episodio = id_var.getvalue()[0]
         conn.commit()
         cursor.close()
         return Episodio(

@@ -2,7 +2,7 @@
 
 Plataforma de streaming colombiana -- Proyecto Final Bases de Datos II
 
-Universidad del Quindio, 2025-1
+Universidad del Quindio
 
 ## Stack tecnologico
 

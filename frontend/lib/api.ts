@@ -42,7 +42,7 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   return response.json()
 }
 
-// ==================== AUTENTICACIÓN ====================
+// ==================== AUTENTICACIÃ“N ====================
 export const authAPI = {
   login: async (email: string, password: string) => {
     const data = await fetchAPI<{ token: string; usuario: any; perfiles: any[] }>('/auth/login', {
@@ -147,28 +147,43 @@ const CATEGORIA_MAP: Record<number, string> = {
   5: 'Podcast',
 }
 
-function obtenerNombreCategoria(id?: number, nombre?: string): string {
-  if (nombre) return nombre
+/** Extrae un string seguro de un campo que puede ser string, nÃºmero u objeto con {nombre_categoria, nombre} */
+function safeString(val: any): string {
+  if (typeof val === 'string') return val
+  if (typeof val === 'number') return String(val)
+  if (val && typeof val === 'object') {
+    if (val.nombre_categoria) return val.nombre_categoria
+    if (val.nombre) return val.nombre
+  }
+  return ''
+}
+
+function obtenerNombreCategoria(id?: number, nombre?: any): string {
+  // Si nombre es un objeto (ej: {nombre_categoria, descripcion, id_categoria}), extraer nombre_categoria
+  const nombreStr = safeString(nombre)
+  if (nombreStr) return nombreStr
   if (id && CATEGORIA_MAP[id]) return CATEGORIA_MAP[id]
   return 'Pelicula'
 }
 
 // Mapeo backend -> frontend para Contenido
 function mapBackendContenidoToFrontend(bc: any): Contenido {
-  const categoria = obtenerNombreCategoria(bc.id_categoria, bc.nombre_categoria || bc.categoria)
+  // Si bc.categoria o bc.nombre_categoria es un objeto, extraer el nombre
+  const categoriaRaw = bc.nombre_categoria ?? bc.categoria
+  const categoria = obtenerNombreCategoria(bc.id_categoria, categoriaRaw)
   return {
     id: bc.id_contenido ?? bc.id,
     titulo: bc.titulo ?? bc.TITULO,
     sinopsis: bc.sinopsis ?? bc.SINOPSIS ?? '',
     año: bc.anio_lanzamiento ?? bc.año ?? bc.ANIO_LANZAMIENTO,
     duracion_minutos: bc.duracion ? Math.round(bc.duracion / 60) : (bc.duracion_minutos || 0),
-    clasificacion_edad: bc.clasificacion_edad ?? bc.CLASIFICACION_EDAD,
+    clasificacion_edad: safeString(bc.clasificacion_edad ?? bc.CLASIFICACION_EDAD) as any,
     categoria: categoria as any,
     generos: Array.isArray(bc.generos) ? bc.generos.map((g: any) => ({
       id: g.id_genero ?? g.id,
       nombre: g.nombre_genero ?? g.nombre,
     })) : [],
-    poster_url: bc.poster_url || `https://placehold.co/300x450?text=${encodeURIComponent(bc.titulo?.slice(0, 20) || '?')}`,
+    poster_url: bc.poster_url || `https://placehold.co/300x450?text=${encodeURIComponent(String(bc.titulo || '').slice(0, 20) || '?')}`,
     banner_url: bc.banner_url,
     trailer_url: bc.trailer_url,
     es_original: bc.es_original === 'S' || bc.es_original === true,
@@ -181,7 +196,7 @@ function mapBackendContenidoToFrontend(bc: any): Contenido {
 
 // Mapeo frontend -> backend para Contenido (CRUD)
 function mapFrontendContenidoToBackend(fc: any): any {
-  return {
+  const backend: any = {
     titulo: fc.titulo,
     anio_lanzamiento: fc.año,
     duracion: (fc.duracion_minutos || 0) * 60,
@@ -191,6 +206,11 @@ function mapFrontendContenidoToBackend(fc: any): any {
     id_categoria: Object.entries(CATEGORIA_MAP).find(([, v]) => v === fc.categoria)?.[0] || 1,
     generos: fc.generos?.map((g: any) => g.id ?? g) || [],
   }
+  // Solo incluir id_empleado_resp si fue proporcionado explicitamente
+  if (fc.id_empleado_resp !== undefined) {
+    backend.id_empleado_resp = fc.id_empleado_resp
+  }
+  return backend
 }
 
 // ==================== CONTENIDO ====================
@@ -270,7 +290,7 @@ export const contenidoAPI = {
     }),
 }
 
-// ==================== GÉNEROS ====================
+// ==================== GÃ‰NEROS ====================
 export const generosAPI = {
   obtenerTodos: () => fetchAPI<Genero[]>('/contenido/generos/all'),
 }
@@ -369,16 +389,21 @@ function mapBackendReporteToFrontend(r: any): Reporte {
     fecha_creacion: r.fecha_reporte ?? r.fecha_creacion,
     fecha_resolucion: r.fecha_resolucion,
     id_moderador: r.id_moderador,
+    nombre_reportador: r.nombre_reportador,
+    titulo_contenido: r.titulo_contenido,
     comentario_moderador: r.comentario_moderador,
   }
 }
 
 export const reportesContenidoAPI = {
-  crear: async (data: { id_perfil: number; id_contenido: number; motivo: string }) => {
-    const payload = {
+  crear: async (data: { id_perfil: number; id_contenido: number; motivo: string; descripcion?: string }) => {
+    const payload: any = {
       id_perfil_reportador: data.id_perfil,
       id_contenido: data.id_contenido,
       motivo: data.motivo,
+    }
+    if (data.descripcion) {
+      payload.descripcion = data.descripcion
     }
     const result = await fetchAPI<any>('/reportes', {
       method: 'POST',
@@ -472,6 +497,16 @@ function mapBackendPlanToFrontend(bp: any): Plan {
   }
 }
 
+function mapFrontendPlanToBackend(fp: any): any {
+  return {
+    nombre_plan: fp.nombre,
+    precio_mensual: fp.precio,
+    num_pantallas: fp.max_pantallas,
+    calidad_video: fp.calidad,
+    max_perfiles: fp.max_perfiles,
+  }
+}
+
 // ==================== PLANES ====================
 export const planesAPI = {
   obtenerTodos: async () => {
@@ -494,7 +529,7 @@ export const planesAPI = {
   actualizar: (id: number, data: Partial<Plan>) =>
     fetchAPI<Plan>(`/admin/planes/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: JSON.stringify(mapFrontendPlanToBackend(data)),
     }),
 }
 
@@ -579,7 +614,7 @@ export const empleadosAPI = {
     }),
 }
 
-// ==================== REPORTES ANALÍTICOS ====================
+// ==================== REPORTES ANALÃTICOS ====================
 export const analiticaAPI = {
   obtenerKPIs: async () => {
     const data = await fetchAPI<any>('/reportes/kpis')
@@ -668,4 +703,3 @@ function mapBackendEmpleadoToFrontend(row: any): Empleado {
 export const departamentosAPI = {
   obtenerTodos: () => fetchAPI<any[]>('/admin/departamentos'),
 }
-

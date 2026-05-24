@@ -118,13 +118,13 @@ export default function PlanesAdminPage() {
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Calidad</label>
                     <select
-                      value={editForm.calidad}
-                      onChange={(e) => setEditForm({ ...editForm, calidad: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground"
+                    value={editForm.calidad}
+                    onChange={(e) => setEditForm({ ...editForm, calidad: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground"
                     >
-                      <option value="HD">HD</option>
-                      <option value="Full HD">Full HD</option>
-                      <option value="4K">4K</option>
+                    <option value="SD">SD</option>
+                    <option value="HD">HD</option>
+                    <option value="4K">4K</option>
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

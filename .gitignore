@@ -40,6 +40,9 @@ backend/.env.example
 check_counts.py
 *.bak
 
+# Notas de aprendizaje
+notas/
+
 # Vercel / v0
 .snowflake/
 .v0-trash/

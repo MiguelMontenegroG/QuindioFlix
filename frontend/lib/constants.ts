@@ -2,9 +2,9 @@
 // Planes de suscripción
 // ============================================
 export const PLANES = {
-  BASICO: { id: 1, nombre: 'Básico', precio: 17900, maxPerfiles: 2, maxPantallas: 1, calidad: 'HD' },
-  ESTANDAR: { id: 2, nombre: 'Estándar', precio: 33900, maxPerfiles: 3, maxPantallas: 2, calidad: 'Full HD' },
-  PREMIUM: { id: 3, nombre: 'Premium', precio: 49900, maxPerfiles: 5, maxPantallas: 4, calidad: '4K' },
+  BASICO: { id: 1, nombre: 'Basico', precio: 14900, maxPerfiles: 2, maxPantallas: 1, calidad: 'SD' },
+  ESTANDAR: { id: 2, nombre: 'Estandar', precio: 24900, maxPerfiles: 3, maxPantallas: 2, calidad: 'HD' },
+  PREMIUM: { id: 3, nombre: 'Premium', precio: 34900, maxPerfiles: 5, maxPantallas: 4, calidad: '4K' },
 } as const
 
 // ============================================

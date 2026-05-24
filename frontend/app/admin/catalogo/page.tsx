@@ -48,8 +48,17 @@ export default function CatalogoPage() {
     cargarContenido();
   }, []);
 
+  // Función helper para obtener string seguro de cualquier campo que pueda ser objeto
+  const getStringValue = (val: any): string => {
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number') return String(val);
+    if (val && typeof val === 'object' && val.nombre_categoria) return val.nombre_categoria;
+    if (val && typeof val === 'object' && val.nombre) return val.nombre;
+    return '';
+  };
+
   const filteredContent = contenido.filter((content) => {
-    const titulo = content.titulo || content.TITULO || '';
+    const titulo = getStringValue(content.titulo);
     return titulo.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
@@ -61,7 +70,7 @@ export default function CatalogoPage() {
     setIsSaving(true);
     try {
       if (editingId) {
-        await contenidoAPI.actualizar(editingId, formData);
+        await contenidoAPI.actualizar(editingId, formData as any);
         toast.success('Contenido actualizado correctamente');
       } else {
         await contenidoAPI.crear(formData as any);
@@ -267,41 +276,42 @@ export default function CatalogoPage() {
                   </tr>
                 ) : (
                   filteredContent.map((content, index) => (
-                    <tr key={content.id || content.ID_CONTENIDO || content.id_contenido || index} className="border-b border-border hover:bg-card/50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-semibold text-foreground">{content.titulo || content.TITULO}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{content.año || content.ANIO_LANZAMIENTO}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground capitalize">{content.categoria || (content.ID_CATEGORIA ? 'Categoria #' + content.ID_CATEGORIA : '')}</td>
+                    <tr key={(content as any).id || (content as any).ID_CONTENIDO || (content as any).id_contenido || index} className="border-b border-border hover:bg-card/50 transition-colors">
+                      <td className="px-6 py-4 text-sm font-semibold text-foreground">{getStringValue((content as any).titulo || (content as any).TITULO)}</td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">{(content as any).año || (content as any).ANIO_LANZAMIENTO}</td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground capitalize">{getStringValue((content as any).categoria) || ((content as any).ID_CATEGORIA ? 'Categoria #' + (content as any).ID_CATEGORIA : '')}</td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 bg-accent/20 text-accent rounded text-xs font-semibold">
-                          {content.clasificacion_edad || content.CLASIFICACION_EDAD}
+                          {getStringValue((content as any).clasificacion_edad || (content as any).CLASIFICACION_EDAD)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">
-                        {(content.es_original === true || content.es_original === 'S' || content.ES_ORIGINAL === 'S') ? 'Si' : '-'}
+                        {((content as any).es_original === true || (content as any).es_original === 'S' || (content as any).ES_ORIGINAL === 'S') ? 'Si' : '-'}
                       </td>
                       <td className="px-6 py-4 flex gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => {
-                            setEditingId(content.id);
+                            const c = content as any;
+                            setEditingId(c.id);
                             setFormData({
-                              titulo: content.titulo,
-                              año: content.año,
-                              duracion_minutos: content.duracion_minutos || 0,
-                              sinopsis: content.sinopsis || '',
-                              clasificacion_edad: content.clasificacion_edad,
-                              categoria: content.categoria,
-                              poster_url: content.poster_url || '',
-                              banner_url: content.banner_url || '',
-                              es_original: content.es_original,
+                              titulo: getStringValue(c.titulo),
+                              año: c.año,
+                              duracion_minutos: c.duracion_minutos || 0,
+                              sinopsis: getStringValue(c.sinopsis || ''),
+                              clasificacion_edad: getStringValue(c.clasificacion_edad),
+                              categoria: getStringValue(c.categoria) as CategoriaContenido,
+                              poster_url: c.poster_url || '',
+                              banner_url: c.banner_url || '',
+                              es_original: c.es_original === true || c.es_original === 'S',
                             });
                             setShowForm(true);
                           }}
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleEliminar(content.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleEliminar((content as any).id)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </td>

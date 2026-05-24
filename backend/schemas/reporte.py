@@ -10,6 +10,7 @@ class ReporteCreate(BaseModel):
     id_perfil_reportador: int
     id_contenido: int
     motivo: str = Field(..., max_length=300)
+    descripcion: Optional[str] = Field(None, max_length=500)
 
 
 class ResolverReporte(BaseModel):
@@ -22,6 +23,7 @@ class Reporte(BaseModel):
     id_perfil_reportador: int
     id_contenido: int
     motivo: str
+    descripcion: Optional[str] = None
     fecha_reporte: date
     estado_reporte: str = "PENDIENTE"
     id_moderador: Optional[int] = None

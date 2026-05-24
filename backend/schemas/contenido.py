@@ -40,7 +40,7 @@ class ContenidoBase(BaseModel):
     clasificacion_edad: str = Field(..., pattern=r"^(TP|\+7|\+13|\+16|\+18)$")
     es_original: str = Field(default="N", pattern=r"^[SN]$")
     id_categoria: int
-    id_empleado_resp: int
+    id_empleado_resp: int = Field(default=4, description="FK a EMPLEADOS (default: Directora de Contenido)")
 
 
 class ContenidoCreate(ContenidoBase):

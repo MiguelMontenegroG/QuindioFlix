@@ -26,10 +26,10 @@ export interface Perfil {
 
 export interface Plan {
   id: number
-  nombre: 'Básico' | 'Estándar' | 'Premium'
+  nombre: 'Basico' | 'Estandar' | 'Premium'
   precio: number
   max_pantallas: number
-  calidad: 'HD' | 'Full HD' | '4K'
+  calidad: 'SD' | 'HD' | '4K'
   max_perfiles: number
   descripcion?: string
 }

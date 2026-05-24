@@ -65,7 +65,7 @@ export default function ModerationPage() {
     return colors[status] || 'bg-gray-500/20 text-gray-500';
   };
 
-    const getReasonColor = (reason: string) => {
+  const getReasonColor = (reason: string) => {
     const colors: Record<string, string> = {
       'contenido_inapropiado': 'bg-red-500/20 text-red-500',
       'error_tecnico': 'bg-orange-500/20 text-orange-500',
@@ -76,22 +76,39 @@ export default function ModerationPage() {
   };
 
   const getReasonText = (reason: any): string => {
-    if (!reason) return 'No especificado'
-    if (typeof reason === 'string') return reason.replace(/_/g, ' ')
-    if (typeof reason === 'object') return reason.motivo || reason.nombre_motivo || JSON.stringify(reason)
-    return String(reason)
-  }
+    if (!reason) return 'No especificado';
+    if (typeof reason === 'string') {
+      const partes = reason.split(' | ');
+      return partes[0].replace(/_/g, ' ');
+    }
+    if (typeof reason === 'object') return reason.motivo || reason.nombre_motivo || JSON.stringify(reason);
+    return String(reason);
+  };
+
+  const getDescripcionText = (report: any): string => {
+    if (report.descripcion) return report.descripcion;
+    if (typeof report.motivo === 'string' && report.motivo.includes(' | ')) {
+      const partes = report.motivo.split(' | ');
+      return partes.slice(1).join(' | ') || 'Sin descripcion adicional';
+    }
+    return 'Sin descripcion adicional';
+  };
+
+  const getMotivoClave = (motivo: any): string => {
+    if (typeof motivo === 'string') {
+      return motivo.split(' | ')[0];
+    }
+    return 'otro';
+  };
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Panel de Moderación</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">Panel de Moderacion</h1>
           <p className="text-muted-foreground">Revisa y resuelve reportes de contenido inapropiado</p>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Total reportes</p>
@@ -108,7 +125,7 @@ export default function ModerationPage() {
             </p>
           </div>
           <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-sm text-muted-foreground mb-2">Tasa de resolución</p>
+            <p className="text-sm text-muted-foreground mb-2">Tasa de resolucion</p>
             <p className="text-3xl font-bold text-accent">
               {Math.round(
                 (reports.filter((r) => r.estado === 'resuelto').length / (reports.length || 1)) * 100
@@ -118,29 +135,12 @@ export default function ModerationPage() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="flex gap-2 mb-8">
-          <Button
-            variant={selectedStatus === 'todos' ? 'default' : 'outline'}
-            onClick={() => setSelectedStatus('todos')}
-          >
-            Todos
-          </Button>
-          <Button
-            variant={selectedStatus === 'pendiente' ? 'default' : 'outline'}
-            onClick={() => setSelectedStatus('pendiente')}
-          >
-            Pendientes
-          </Button>
-          <Button
-            variant={selectedStatus === 'resuelto' ? 'default' : 'outline'}
-            onClick={() => setSelectedStatus('resuelto')}
-          >
-            Resueltos
-          </Button>
+          <Button variant={selectedStatus === 'todos' ? 'default' : 'outline'} onClick={() => setSelectedStatus('todos')}>Todos</Button>
+          <Button variant={selectedStatus === 'pendiente' ? 'default' : 'outline'} onClick={() => setSelectedStatus('pendiente')}>Pendientes</Button>
+          <Button variant={selectedStatus === 'resuelto' ? 'default' : 'outline'} onClick={() => setSelectedStatus('resuelto')}>Resueltos</Button>
         </div>
 
-        {/* Reports List */}
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-accent" />
@@ -157,21 +157,21 @@ export default function ModerationPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-bold text-foreground">
-                        Contenido #{report.id_contenido}
+                        {report.titulo_contenido || `Contenido #${report.id_contenido}`}
                       </h3>
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(report.estado)}`}>
                         {report.estado === 'pendiente' ? 'Pendiente' : report.estado === 'resuelto' ? 'Resuelto' : 'Rechazado'}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Reportado por Perfil #{report.id_perfil} • {report.fecha_creacion ? new Date(report.fecha_creacion).toLocaleDateString('es-CO') : 'Fecha no disponible'}
+                      Reportado por {report.nombre_reportador || `Perfil #${report.id_perfil}`} | {report.fecha_creacion ? new Date(report.fecha_creacion).toLocaleDateString('es-CO') : 'Fecha no disponible'}
                     </p>
                   </div>
                   <Eye className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                 </div>
 
                 <div className="flex items-center gap-2 mb-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getReasonColor(typeof report.motivo === 'string' ? report.motivo : 'otro')}`}>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getReasonColor(getMotivoClave(report.motivo))}`}>
                     {getReasonText(report.motivo)}
                   </span>
                 </div>
@@ -180,26 +180,15 @@ export default function ModerationPage() {
                   <div className="border-t border-border pt-4 mt-4">
                     <p className="text-sm text-muted-foreground mb-4">
                       <span className="font-semibold text-foreground">Descripcion: </span>
-                      {report.descripcion || 'Sin descripcion adicional'}
+                      {getDescripcionText(report)}
                     </p>
                     {report.estado === 'pendiente' && (
                       <div className="flex gap-3">
-                        <Button
-                          onClick={() => resolveReport(report.id, 'resuelto')}
-                          disabled={isResolving}
-                          className="gap-2"
-                        >
-                          <Check className="w-4 h-4" />
-                          Resolver
+                        <Button onClick={(e) => { e.stopPropagation(); resolveReport(report.id, 'resuelto'); }} disabled={isResolving} className="gap-2">
+                          <Check className="w-4 h-4" /> Resolver
                         </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => resolveReport(report.id, 'rechazado')}
-                          disabled={isResolving}
-                          className="gap-2"
-                        >
-                          <X className="w-4 h-4" />
-                          Rechazar
+                        <Button variant="outline" onClick={(e) => { e.stopPropagation(); resolveReport(report.id, 'rechazado'); }} disabled={isResolving} className="gap-2">
+                          <X className="w-4 h-4" /> Rechazar
                         </Button>
                       </div>
                     )}
@@ -214,9 +203,9 @@ export default function ModerationPage() {
           <div className="flex flex-col items-center justify-center py-12 bg-card border border-border rounded-lg">
             <AlertCircle className="w-12 h-12 text-muted-foreground/50 mb-4" />
             <h2 className="text-lg font-semibold text-foreground mb-2">
-              {selectedStatus === 'todos' ? 'Sin reportes' : 'Sin reportes en esta categoría'}
+              {selectedStatus === 'todos' ? 'Sin reportes' : 'Sin reportes en esta categoria'}
             </h2>
-            <p className="text-muted-foreground">¡Excelente trabajo! No hay reportes pendientes.</p>
+            <p className="text-muted-foreground">Excelente trabajo! No hay reportes pendientes.</p>
           </div>
         )}
       </div>
