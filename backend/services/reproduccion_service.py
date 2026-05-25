@@ -22,10 +22,33 @@ def _read_clob(val):
 
 
 def registrar_reproduccion(data: ReproduccionCreate) -> Reproduccion:
-    """Registra una nueva reproduccion."""
+    """Registra una nueva reproduccion, solo si el usuario tiene cuenta ACTIVA."""
     conn = get_connection("admin")
     try:
         cursor = conn.cursor()
+
+        # Verificar que el perfil exista y que su usuario tenga cuenta ACTIVA
+        cursor.execute(
+            f"""SELECT u.estado_cuenta
+               FROM {fq('USUARIOS')} u
+               INNER JOIN {fq('PERFILES')} p ON p.id_usuario = u.id_usuario
+               WHERE p.id_perfil = :1""",
+            [data.id_perfil]
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="El perfil especificado no existe"
+            )
+
+        if row[0] != 'ACTIVO':
+            raise HTTPException(
+                status_code=403,
+                detail="No se puede reproducir: la cuenta del usuario esta desactivada"
+            )
+
         now = datetime.now(timezone.utc)
 
         # Obtener el siguiente ID de la secuencia
@@ -48,6 +71,9 @@ def registrar_reproduccion(data: ReproduccionCreate) -> Reproduccion:
             fecha_hora_inicio=now, dispositivo=data.dispositivo,
             porcentaje_avance=0
         )
+    except HTTPException:
+        conn.rollback()
+        raise
     except oracledb.DatabaseError as e:
         conn.rollback()
         handle_oracle_error(e)

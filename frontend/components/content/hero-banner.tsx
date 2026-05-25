@@ -7,6 +7,9 @@ import { Play, Plus, Check, Info, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { reproduccionesAPI } from '@/lib/api'
+import { getPerfilActivo } from '@/lib/auth'
+import { toast } from 'sonner'
 import type { Contenido } from '@/lib/types'
 
 interface HeroBannerProps {
@@ -25,9 +28,29 @@ export function HeroBanner({
   const [isMuted, setIsMuted] = useState(true)
   const [imageLoaded, setImageLoaded] = useState(false)
 
-  // @ts-ignore
-  // @ts-ignore
-  // @ts-ignore
+  const handlePlay = async () => {
+    const perfil = getPerfilActivo()
+    if (!perfil) {
+      toast.error('Debes iniciar sesion para reproducir')
+      return
+    }
+    try {
+      await reproduccionesAPI.registrar({
+        id_perfil: perfil.id,
+        id_contenido: contenido.id,
+        dispositivo: 'COMPUTADOR',
+      })
+      toast.success('Reproduccion registrada')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      if (msg.toLowerCase().includes('desactivada')) {
+        toast.error('Tu cuenta esta desactivada. No puedes reproducir contenido.')
+      } else {
+        toast.error('Error al registrar reproduccion: ' + msg)
+      }
+    }
+  }
+
   return (
     <section className={cn('relative h-[80vh] min-h-[600px] w-full', className)}>
       {/* Background Image */}
@@ -44,7 +67,7 @@ export function HeroBanner({
           priority
           sizes="100vw"
         />
-        
+
         {/* Loading state */}
         {!imageLoaded && (
           <div className="absolute inset-0 bg-muted animate-pulse" />
@@ -127,12 +150,10 @@ export function HeroBanner({
             <Button
               size="lg"
               className="bg-white text-black hover:bg-white/90 font-semibold px-8"
-              asChild
+              onClick={handlePlay}
             >
-              <Link href={`/ver/${contenido.id}`}>
-                <Play className="mr-2 h-5 w-5 fill-current" />
-                Reproducir
-              </Link>
+              <Play className="mr-2 h-5 w-5 fill-current" />
+              Reproducir
             </Button>
 
             <Button
@@ -143,7 +164,7 @@ export function HeroBanner({
             >
               <Link href={`/contenido/${contenido.id}`}>
                 <Info className="mr-2 h-5 w-5" />
-                Más información
+                Mas informacion
               </Link>
             </Button>
 

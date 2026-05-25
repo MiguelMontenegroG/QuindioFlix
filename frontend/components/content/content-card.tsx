@@ -60,7 +60,7 @@ export function ContentCard({
     return colors[clasificacion] || 'bg-muted'
   }
 
-  const handlePlay = async (e: React.MouseEvent) => {
+    const handlePlay = async (e: React.MouseEvent) => {
     e.preventDefault()
     const perfil = getPerfilActivo()
     if (!perfil) {
@@ -76,7 +76,11 @@ export function ContentCard({
       toast.success('Reproduccion registrada')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
-      toast.error('Error al registrar reproduccion: ' + msg)
+      if (msg.toLowerCase().includes('desactivada')) {
+        toast.error('Tu cuenta esta desactivada. No puedes reproducir contenido.')
+      } else {
+        toast.error('Error al registrar reproduccion: ' + msg)
+      }
     }
   }
 
