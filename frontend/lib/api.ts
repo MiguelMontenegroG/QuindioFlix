@@ -434,7 +434,7 @@ export const reportesContenidoAPI = {
 
   resolver: async (id: number, data: { estado: 'resuelto' | 'rechazado'; comentario: string }) => {
     const payload = {
-      estado: data.estado.toUpperCase(),
+      estado: data.estado === 'resuelto' ? 'RESUELTO' : 'RECHAZADO',
       comentario_moderador: data.comentario,
     }
     const result = await fetchAPI<any>(`/reportes/${id}/resolver`, {
@@ -655,6 +655,7 @@ export const analiticaAPI = {
     return {
       usuarios_activos: data.usuarios_activos ?? 0,
       ingresos_mensuales: data.ingresos_mes ?? data.ingresos_mensuales ?? 0,
+      ingresos_mes: data.ingresos_mes ?? data.ingresos_mensuales ?? 0,
       total_reproducciones: data.reproducciones_totales ?? data.total_reproducciones ?? 0,
       contenido_total: data.contenido_total ?? data.contenido_mas_popular?.length ?? 0,
       contenido_mas_popular: data.contenido_mas_popular ?? [],

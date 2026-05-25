@@ -105,6 +105,9 @@ def actualizar(id_usuario: int, data: UsuarioUpdate):
             if value is not None:
                 updates.append(f"{field} = :{field}")
                 binds[field] = value
+        if data.estado is not None:
+            updates.append("estado_cuenta = :estado")
+            binds["estado"] = data.estado
         if updates:
             sql = f"UPDATE {fq('USUARIOS')} SET {', '.join(updates)} WHERE id_usuario = :id"
             cursor.execute(sql, binds)

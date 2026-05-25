@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Ban, CheckCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { usuariosAPI } from '@/lib/api';
 import type { Usuario } from '@/lib/types';
 
@@ -30,6 +32,18 @@ export default function UsuariosAdminPage() {
     cargarUsuarios();
   }, []);
 
+  const handleToggleEstado = async (usuario: Usuario) => {
+    const nuevoEstado = (usuario.estado === 'activo' || usuario.estado === 'ACTIVO') ? 'INACTIVO' : 'ACTIVO';
+    if (!confirm(`Estas seguro de ${nuevoEstado === 'ACTIVO' ? 'activar' : 'desactivar'} a ${usuario.nombre}?`)) return;
+    try {
+      await usuariosAPI.actualizar(usuario.id, { estado: nuevoEstado as any });
+      toast.success(`Usuario ${nuevoEstado === 'ACTIVO' ? 'activado' : 'desactivado'}`);
+      cargarUsuarios();
+    } catch {
+      toast.error('Error al actualizar usuario');
+    }
+  };
+
   const filteredUsuarios = usuarios.filter((u) => {
     const matchesSearch =
       u.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -38,17 +52,14 @@ export default function UsuariosAdminPage() {
     return matchesSearch && matchesPlan;
   });
 
-
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">Gestión de Usuarios</h1>
           <p className="text-muted-foreground">Administra todos los usuarios de la plataforma</p>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Total usuarios</p>
@@ -68,7 +79,6 @@ export default function UsuariosAdminPage() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
@@ -94,30 +104,17 @@ export default function UsuariosAdminPage() {
           </div>
         </div>
 
-        {/* Users Table */}
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                    Usuario
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                    Email
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                    Ciudad
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                    Plan
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                    Estado
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                    Acciones
-                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Usuario</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Email</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Ciudad</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Plan</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Estado</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,9 +133,7 @@ export default function UsuariosAdminPage() {
                 ) : (
                   filteredUsuarios.map((usuario) => (
                     <tr key={usuario.id} className="border-b border-border hover:bg-card/50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-semibold text-foreground">
-                        {usuario.nombre}
-                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-foreground">{usuario.nombre}</td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">{usuario.email}</td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">{usuario.ciudad || '-'}</td>
                       <td className="px-6 py-4">
@@ -147,18 +142,25 @@ export default function UsuariosAdminPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-semibold ${
-                            usuario.estado === 'activo' || usuario.estado === 'ACTIVO'
-                              ? 'bg-green-500/20 text-green-500'
-                              : 'bg-red-500/20 text-red-500'
-                          }`}
-                        >
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          usuario.estado === 'activo' || usuario.estado === 'ACTIVO'
+                            ? 'bg-green-500/20 text-green-500'
+                            : 'bg-red-500/20 text-red-500'
+                        }`}>
                           {usuario.estado === 'activo' || usuario.estado === 'ACTIVO' ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
                       <td className="px-6 py-4 flex gap-2">
-                        <span className="text-xs text-muted-foreground">No disponible</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleToggleEstado(usuario)}
+                          title={usuario.estado === 'activo' || usuario.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
+                        >
+                          {usuario.estado === 'activo' || usuario.estado === 'ACTIVO'
+                            ? <Ban className="w-4 h-4 text-red-400" />
+                            : <CheckCircle className="w-4 h-4 text-green-400" />}
+                        </Button>
                       </td>
                     </tr>
                   ))

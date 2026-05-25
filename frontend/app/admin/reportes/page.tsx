@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, Users, TrendingUp, DollarSign, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { analiticaAPI } from '@/lib/api';
 
 export default function ReportesPage() {
@@ -226,17 +227,22 @@ export default function ReportesPage() {
                   {monthlyRevenue.length === 0 ? (
                     <p className="text-muted-foreground text-sm">No hay datos disponibles</p>
                   ) : (
-                    monthlyRevenue.map((row: any, i: number) => (
+                    monthlyRevenue.map((row: any, i: number) => {
+                      const ingresos = row.INGRESOS ?? row.ingresos ?? 0;
+                      const mes = row.MES ?? row.mes ?? row.month ?? '';
+                      const maxIngreso = Math.max(...monthlyRevenue.map(r => r.INGRESOS ?? r.ingresos ?? 0));
+                      return (
                       <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-foreground">{row.mes || row.month}</span>
+                        <span className="text-sm text-foreground w-32">{mes}</span>
                         <div className="flex-1 mx-4 h-2 bg-card/50 rounded-full overflow-hidden">
-                          <div className="h-full bg-accent rounded-full" style={{ width: `${Math.min((row.ingresos || row.total_ingresos || row.revenue || 0) / 300000 * 100, 100)}%` }} />
+                          <div className="h-full bg-accent rounded-full" style={{ width: `${maxIngreso > 0 ? (ingresos / maxIngreso) * 100 : 0}%` }} />
                         </div>
-                        <span className="text-sm font-semibold text-accent">
-                          ${(row.ingresos || row.total_ingresos || row.revenue || 0).toLocaleString('es-CO')}
+                        <span className="text-sm font-semibold text-accent w-32 text-right">
+                          ${ingresos.toLocaleString('es-CO')}
                         </span>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -244,10 +250,62 @@ export default function ReportesPage() {
 
             {/* Export */}
             <div className="flex gap-3">
-              <Button className="gap-2" onClick={() => alert('Exportacion PDF iniciada')}>
+              <Button className="gap-2" onClick={async () => {
+                try {
+                  const { jsPDF } = await import('jspdf');
+                  await import('jspdf-autotable');
+                  const doc = new jsPDF();
+                  doc.setFontSize(18);
+                  doc.text('Reporte QuindioFlix', 14, 22);
+                  doc.setFontSize(11);
+                  doc.text(`Generado: ${new Date().toLocaleDateString('es-CO')}`, 14, 32);
+
+                  doc.setFontSize(14);
+                  doc.text('Contenido mas popular', 14, 45);
+                  const topData = topContent.map((c: any, idx: number) => [idx + 1, c.titulo || '', c.total_reproducciones?.toLocaleString() || '0', c.calificacion_promedio?.toFixed(1) || 'N/A']);
+                  (doc as any).autoTable({
+                    startY: 50,
+                    head: [['#', 'Titulo', 'Reproducciones', 'Calificacion']],
+                    body: topData,
+                  });
+
+                  doc.text('Consumo por ciudad', 14, (doc as any).lastAutoTable.finalY + 15);
+                  const cityDataTable = cityData.map((r: any, idx: number) => [idx + 1, r.ciudad || '', (r.total_usuarios || 0).toLocaleString(), `$${(r.ingresos_totales || 0).toLocaleString()}`]);
+                  (doc as any).autoTable({
+                    startY: (doc as any).lastAutoTable.finalY + 20,
+                    head: [['#', 'Ciudad', 'Usuarios', 'Ingresos']],
+                    body: cityDataTable,
+                  });
+
+                  doc.save(`reporte-quindioflix-${new Date().toISOString().split('T')[0]}.pdf`);
+                  toast.success('PDF exportado correctamente');
+                } catch (e) {
+                  toast.error('Error al exportar PDF: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+                }
+              }}>
                 Exportar PDF
               </Button>
-              <Button variant="outline" className="gap-2" onClick={() => alert('Exportacion CSV iniciada')}>
+              <Button variant="outline" className="gap-2" onClick={() => {
+                try {
+                  const headers = ['Mes,Ingresos,Usuarios,Contenido_Popular'];
+                  const rows = monthlyRevenue.map((r: any) => {
+                    const mes = r.MES ?? r.mes ?? '';
+                    const ingresos = r.INGRESOS ?? r.ingresos ?? 0;
+                    const usuarios = r.USUARIOS ?? r.usuarios ?? 0;
+                    return `${mes},${ingresos},${usuarios},"${topContent.map((c: any) => c.titulo).join(', ')}"`;
+                  });
+                  const csv = [headers, ...rows].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `reporte-quindioflix-${new Date().toISOString().split('T')[0]}.csv`;
+                  link.click();
+                  URL.revokeObjectURL(link.href);
+                  toast.success('CSV exportado correctamente');
+                } catch (e) {
+                  toast.error('Error al exportar CSV');
+                }
+              }}>
                 Exportar CSV
               </Button>
             </div>

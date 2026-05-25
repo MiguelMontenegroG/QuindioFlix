@@ -78,6 +78,7 @@ class UsuarioUpdate(BaseModel):
     telefono: Optional[str] = Field(None, max_length=15)
     ciudad: Optional[str] = Field(None, max_length=80)
     id_plan: Optional[int] = None
+    estado: Optional[str] = Field(None, pattern=r"^(ACTIVO|INACTIVO)$")
 
 
 class Usuario(UsuarioBase):

@@ -2,6 +2,7 @@
 Todos los endpoints requieren autenticacion de administrador.
 """
 
+from datetime import datetime
 import oracledb
 from fastapi import APIRouter, HTTPException, Query, Depends
 
@@ -32,7 +33,6 @@ def listar_empleados(
             where = "WHERE d.nombre_depto = :depto"
             binds["depto"] = departamento
 
-        # Total
         cursor.execute(
             f"SELECT COUNT(*) FROM {fq('EMPLEADOS')} e JOIN {fq('DEPARTAMENTOS')} d ON d.id_departamento = e.id_departamento {where}",
             binds
@@ -95,19 +95,41 @@ def crear_empleado(data: dict):
     conn = get_connection("admin")
     try:
         cursor = conn.cursor()
+        nombre = data.get("nombre")
+        email = data.get("email")
+        if not nombre or not email:
+            raise HTTPException(status_code=400, detail="Los campos nombre y email son obligatorios")
+
+        cargo = data.get("cargo", "")
+        fecha_contratacion = data.get("fecha_contratacion")
+        if not fecha_contratacion:
+            fecha_contratacion = datetime.now().strftime("%Y-%m-%d")
+
+        id_departamento = data.get("id_departamento")
+        if not id_departamento:
+            raise HTTPException(status_code=400, detail="El campo id_departamento es obligatorio")
+
         cursor.execute(
             f"""INSERT INTO {fq('EMPLEADOS')} (id_empleado, nombre, email, cargo, fecha_contratacion, id_departamento, id_supervisor)
-               VALUES (seq_empleados.NEXTVAL, :1, :2, :3, :4, :5, :6)""",
-            [data["nombre"], data["email"], data["cargo"],
-             data["fecha_contratacion"], data["id_departamento"],
-             data.get("id_supervisor")]
+               VALUES (seq_empleados.NEXTVAL, :1, :2, :3, TO_DATE(:4, 'YYYY-MM-DD'), :5, :6)""",
+            [nombre, email, cargo, fecha_contratacion, id_departamento, data.get("id_supervisor")]
         )
         conn.commit()
         cursor.close()
         return {"mensaje": "Empleado creado exitosamente"}
     except oracledb.DatabaseError as e:
         conn.rollback()
-        handle_oracle_error(e)
+        error, = e.args
+        code = getattr(error, "code", None)
+        message = getattr(error, "message", str(e))
+        print(f"[Admin Error] ORA-{code}: {message}")
+        raise HTTPException(status_code=400, detail=f"Error de BD (ORA-{code}): {message}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"[Admin Error] Inesperado: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al crear empleado: {str(e)}")
     finally:
         release_connection(conn, "admin")
 

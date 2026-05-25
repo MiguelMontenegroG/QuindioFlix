@@ -29,6 +29,8 @@ class Reporte(BaseModel):
     id_moderador: Optional[int] = None
     fecha_resolucion: Optional[date] = None
     comentario_moderador: Optional[str] = None
+    nombre_reportador: Optional[str] = None
+    titulo_contenido: Optional[str] = None
 
     class Config:
         from_attributes = True

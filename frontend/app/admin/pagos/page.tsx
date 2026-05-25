@@ -45,15 +45,16 @@ export default function PagosAdminPage() {
   }, [])
 
   const filteredPagos = pagos.filter((pago) => {
-    const matchesSearch = pago.referencia?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = filterStatus === 'todos' || pago.estado === filterStatus
+    const ref = `PAG-${pago.id}`
+    const matchesSearch = ref.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = filterStatus === 'todos' || pago.estado_pago?.toLowerCase() === filterStatus
     return matchesSearch && matchesStatus
   })
 
   const handleReembolso = async (id: number) => {
     if (!confirm('Estas seguro de reembolsar este pago?')) return
     try {
-      await pagosAPI.actualizarEstado(id, 'reembolsado')
+      await pagosAPI.actualizarEstado(id, 'REEMBOLSADO')
       toast.success('Pago reembolsado correctamente')
       cargarPagos()
     } catch {
@@ -63,27 +64,28 @@ export default function PagosAdminPage() {
 
   const stats = {
     total: pagos.reduce((sum, p) => sum + Number(p.monto), 0),
-    exitosos: pagos.filter((p) => p.estado === 'exitoso').length,
-    fallidos: pagos.filter((p) => p.estado === 'fallido').length,
-    reembolsados: pagos.filter((p) => p.estado === 'reembolsado').length,
+    exitosos: pagos.filter((p) => p.estado_pago === 'EXITOSO').length,
+    fallidos: pagos.filter((p) => p.estado_pago === 'FALLIDO').length,
+    reembolsados: pagos.filter((p) => p.estado_pago === 'REEMBOLSADO').length,
   }
 
   const getStatusBadge = (estado: string) => {
     const styles: Record<string, string> = {
-      exitoso: 'bg-green-500/20 text-green-500',
-      fallido: 'bg-red-500/20 text-red-500',
-      pendiente: 'bg-yellow-500/20 text-yellow-500',
-      reembolsado: 'bg-blue-500/20 text-blue-500',
+      EXITOSO: 'bg-green-500/20 text-green-500',
+      FALLIDO: 'bg-red-500/20 text-red-500',
+      PENDIENTE: 'bg-yellow-500/20 text-yellow-500',
+      REEMBOLSADO: 'bg-blue-500/20 text-blue-500',
     }
     return styles[estado] || 'bg-muted text-muted-foreground'
   }
 
   const getMethodLabel = (metodo: string) => {
     const labels: Record<string, string> = {
-      tarjeta_credito: 'Tarjeta de crédito',
-      tarjeta_debito: 'Tarjeta débito',
-      pse: 'PSE',
-      efectivo: 'Efectivo',
+      TARJETA_CREDITO: 'Tarjeta de crédito',
+      TARJETA_DEBITO: 'Tarjeta débito',
+      PSE: 'PSE',
+      NEQUI: 'Nequi',
+      DAVIPLATA: 'Daviplata',
     }
     return labels[metodo] || metodo
   }
@@ -146,14 +148,14 @@ export default function PagosAdminPage() {
             />
           </div>
           <div className="flex gap-2">
-            {['todos', 'exitoso', 'fallido', 'pendiente', 'reembolsado'].map((status) => (
+            {['todos', 'EXITOSO', 'FALLIDO', 'PENDIENTE', 'REEMBOLSADO'].map((status) => (
               <Button
                 key={status}
                 variant={filterStatus === status ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setFilterStatus(status)}
               >
-                {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1)}
+                {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()}
               </Button>
             ))}
           </div>
@@ -189,24 +191,24 @@ export default function PagosAdminPage() {
                 filteredPagos.map((pago) => (
                   <tr key={pago.id} className="border-b border-border hover:bg-card/50 transition-colors">
                     <td className="px-6 py-4 font-mono text-xs text-accent font-semibold">
-                      {pago.referencia || `PAG-${pago.id}`}
+                      {`PAG-${pago.id}`}
                     </td>
                     <td className="px-6 py-4 text-sm font-semibold text-foreground">
                       ${Number(pago.monto).toLocaleString('es-CO')}
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {pago.fecha ? new Date(pago.fecha).toLocaleDateString('es-CO') : '-'}
+                      {pago.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString('es-CO') : '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {getMethodLabel(pago.metodo)}
+                      {getMethodLabel(pago.metodo_pago)}
                     </td>
                     <td className="px-6 py-4">
-                      <Badge className={getStatusBadge(pago.estado)}>
-                        {pago.estado}
+                      <Badge className={getStatusBadge(pago.estado_pago)}>
+                        {pago.estado_pago}
                       </Badge>
                     </td>
                     <td className="px-6 py-4 flex gap-2">
-                      {pago.estado === 'exitoso' && (
+                      {pago.estado_pago === 'EXITOSO' && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -228,7 +230,6 @@ export default function PagosAdminPage() {
           Mostrando {filteredPagos.length} de {pagos.length} pagos
         </p>
 
-        {/* Info de soporte */}
         <div className="mt-8 bg-card/50 border border-border rounded-lg p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4">Gestión de pagos - Soporte</h3>
           <div className="space-y-2 text-sm text-muted-foreground">

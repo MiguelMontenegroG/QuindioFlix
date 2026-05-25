@@ -80,11 +80,9 @@ def listar_reportes(
             where = "WHERE r.estado_reporte = :estado"
             binds["estado"] = estado
 
-        # Total
         cursor.execute(f"SELECT COUNT(*) FROM {fq("REPORTES")} r {where}", binds)
         total = cursor.fetchone()[0]
 
-        # Paginacion con JOINs para obtener nombre del perfil y titulo del contenido
         offset = (pagina - 1) * por_pagina
         sql = f"""
             SELECT r.id_reporte, r.id_perfil_reportador, r.id_contenido, r.motivo,
@@ -133,7 +131,6 @@ def resolver_reporte(id_reporte: int, data: ResolverReporte):
         conn.commit()
         cursor.close()
 
-        # Retornar reporte actualizado con JOINs
         cursor = conn.cursor()
         cursor.execute(
             f"""SELECT r.id_reporte, r.id_perfil_reportador, r.id_contenido, r.motivo,
@@ -153,7 +150,8 @@ def resolver_reporte(id_reporte: int, data: ResolverReporte):
         return Reporte(
             id_reporte=row[0], id_perfil_reportador=row[1], id_contenido=row[2],
             motivo=row[3], fecha_reporte=row[4], estado_reporte=row[5],
-            id_moderador=row[6], fecha_resolucion=row[7], comentario_moderador=row[8]
+            id_moderador=row[6], fecha_resolucion=row[7], comentario_moderador=row[8],
+            nombre_reportador=row[9], titulo_contenido=row[10]
         )
     except HTTPException:
         raise
