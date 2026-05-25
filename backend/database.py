@@ -17,10 +17,17 @@ _DEFAULT_PASS = settings.DB_PASS
 
 
 def _get_credentials(role: str) -> tuple[str, str]:
-    """Obtiene credenciales para un rol, con fallback al usuario principal."""
+    """Obtiene credenciales para un rol.
+
+    Para el rol 'admin' siempre usa el usuario principal (C##quindioflix),
+    que tiene acceso completo al esquema QUINDIOFLIX como propietario.
+    Para otros roles, usa el usuario especifico si tiene password,
+    o fallback al principal si no.
+    """
+    if role == "admin":
+        return (_DEFAULT_USER, _DEFAULT_PASS)
     user, password = ROLE_USERS[role]
-    # Si no hay password o el usuario es qf_* (no creado en BD), usar el principal
-    if not password or user.startswith("qf_"):
+    if not password:
         return (_DEFAULT_USER, _DEFAULT_PASS)
     return (user, password)
 

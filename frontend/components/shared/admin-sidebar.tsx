@@ -78,7 +78,7 @@ const navSections: NavSection[] = [
     title: 'Administración',
     items: [
       { href: '/admin/empleados', label: 'Empleados', icon: UserCog, roles: ['ROL_ADMIN'] },
-      { href: '/admin/roles', label: 'Roles Oracle', icon: Shield, roles: ['ROL_ADMIN'] },
+      { href: '/admin/roles', label: 'Terminal Oracle', icon: Shield, roles: ['ROL_ADMIN'] },
       { href: '/admin/planes', label: 'Planes', icon: Settings, roles: ['ROL_ADMIN'] },
     ],
   },

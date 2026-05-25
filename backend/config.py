@@ -23,7 +23,7 @@ class Settings:
     DB_PASS: str = _required_env("DB_PASS", _required_env("DB_PASSWORD", ""))
     DB_DSN: str = _required_env("DB_DSN", "localhost:1521/BD")
     _db_schema = os.getenv("DB_SCHEMA")
-    DB_SCHEMA: str = _db_schema if _db_schema is not None else "QUINDIOFLIX"
+    DB_SCHEMA: str = _db_schema if _db_schema is not None else "C##QUINDIOFLIX"
 
     # Usuarios por rol (pooles separados)
     DB_USER_ADMIN: str = _required_env("DB_USER_ADMIN", "qf_admin")

@@ -712,6 +712,12 @@ export const dbaAPI = {
     fetchAPI('/dba/renovacion-mensual', {
       method: 'POST',
     }),
+
+  ejecutarQuery: (query: string, limite: number = 500) =>
+    fetchAPI<{ columns: string[]; rows: Record<string, any>[]; total: number; mostrando: number }>(`/dba/query?limite=${limite}`, {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    }),
 }
 
 function mapBackendEmpleadoToFrontend(row: any): Empleado {

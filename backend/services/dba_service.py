@@ -1,6 +1,7 @@
-"""Servicio DBA: EXPLAIN PLAN, tablespaces, vistas materializadas."""
+"""Servicio DBA: EXPLAIN PLAN, tablespaces, vistas materializadas, SQL directo."""
 
-from ..database import get_connection, release_connection
+from ..database import get_connection, release_connection, fq
+from ..config import settings
 
 
 def transacciones_activas() -> list[dict]:
@@ -38,11 +39,8 @@ def explain_plan(query: str) -> list[dict]:
     conn = get_connection("admin")
     try:
         cursor = conn.cursor()
-        # Limpiar plan table
         cursor.execute("DELETE FROM PLAN_TABLE")
-        # Ejecutar explain
         cursor.execute(f"EXPLAIN PLAN SET STATEMENT_ID = 'QUINDIOFLIX' FOR {query}")
-        # Obtener resultado
         cursor.execute(
             """SELECT operation, object_name, cost, cardinality, time
                FROM PLAN_TABLE
@@ -127,7 +125,6 @@ def ejecutar_renovacion_mensual() -> dict:
     conn = get_connection("admin")
     try:
         cursor = conn.cursor()
-        # Marcar usuarios como INACTIVO si su ultimo pago vencio hace mas de 30 dias
         cursor.execute(
             """UPDATE USUARIOS u SET estado_cuenta = 'INACTIVO'
                WHERE u.estado_cuenta = 'ACTIVO'
@@ -151,13 +148,29 @@ def ejecutar_renovacion_mensual() -> dict:
 
 def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
     """Ejecuta una consulta SELECT directa y retorna columnas + filas.
-    Solo acepta SELECT como medida de seguridad."""
+
+    Solo acepta SELECT como medida de seguridad. Establece CURRENT_SCHEMA
+    para que las tablas sin prefijo se resuelvan al esquema del proyecto.
+    """
     conn = get_connection("admin")
     try:
         cursor = conn.cursor()
+
+        # --- 1. Establecer CURRENT_SCHEMA (para tablas sin calificar) ---
+        if settings.DB_SCHEMA:
+            try:
+                cursor.execute(f"ALTER SESSION SET CURRENT_SCHEMA = {settings.DB_SCHEMA}")
+            except Exception:
+                try:
+                    cursor.execute(f'ALTER SESSION SET CURRENT_SCHEMA = "{settings.DB_SCHEMA}"')
+                except Exception:
+                    pass  # Si falla, no importa, las tablas con prefijo funcionaran igual
+
+        # --- 2. Ejecutar COUNT(*) ---
         cursor.execute(f"SELECT COUNT(*) FROM ({query})")
         total = cursor.fetchone()[0]
 
+        # --- 3. Ejecutar SELECT con datos y limite ROWNUM ---
         cursor.execute(f"SELECT * FROM ({query}) WHERE ROWNUM <= {limite}")
         columns = [desc[0] for desc in cursor.description]
         rows = []
@@ -165,13 +178,12 @@ def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
             row = {}
             for i, col in enumerate(columns):
                 val = r[i]
-                # Convertir tipos Oracle a tipos Python serializables
-                if hasattr(val, 'isoformat'):  # datetime
+                if hasattr(val, 'isoformat'):
                     val = val.isoformat()
-                elif isinstance(val, (int, float)):
-                    val = float(val) if isinstance(val, float) else val
                 elif val is None:
                     val = None
+                elif isinstance(val, (int, float)):
+                    pass  # mantener tipo nativo
                 else:
                     val = str(val)
                 row[col] = val
@@ -183,7 +195,7 @@ def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
             "rows": rows,
             "total": total,
             "limite": limite,
-            "mostrando": len(rows)
+            "mostrando": len(rows),
         }
     except Exception as e:
         return {"error": str(e)}
