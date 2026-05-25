@@ -7,6 +7,9 @@ import { Play, Plus, Check, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { reproduccionesAPI } from '@/lib/api'
+import { getPerfilActivo } from '@/lib/auth'
+import { toast } from 'sonner'
 import type { Contenido } from '@/lib/types'
 
 interface ContentCardProps {
@@ -37,24 +40,44 @@ export function ContentCard({
 
   const getCategoryColor = (categoria: string) => {
     const colors: Record<string, string> = {
-      película: 'bg-blue-500/20 text-blue-400',
-      serie: 'bg-purple-500/20 text-purple-400',
-      documental: 'bg-green-500/20 text-green-400',
-      música: 'bg-orange-500/20 text-orange-400',
-      podcast: 'bg-pink-500/20 text-pink-400',
+      'pelicula': 'bg-blue-500/20 text-blue-400',
+      'serie': 'bg-purple-500/20 text-purple-400',
+      'documental': 'bg-green-500/20 text-green-400',
+      'musica': 'bg-orange-500/20 text-orange-400',
+      'podcast': 'bg-pink-500/20 text-pink-400',
     }
     return colors[categoria] || 'bg-muted text-muted-foreground'
   }
 
   const getClassificationColor = (clasificacion: string) => {
     const colors: Record<string, string> = {
-      TP: 'bg-green-500/80 text-white',
+      'TP': 'bg-green-500/80 text-white',
       '+7': 'bg-green-600/80 text-white',
       '+13': 'bg-yellow-500/80 text-black',
       '+16': 'bg-orange-500/80 text-white',
       '+18': 'bg-red-500/80 text-white',
     }
     return colors[clasificacion] || 'bg-muted'
+  }
+
+  const handlePlay = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    const perfil = getPerfilActivo()
+    if (!perfil) {
+      toast.error('Debes iniciar sesion para reproducir')
+      return
+    }
+    try {
+      await reproduccionesAPI.registrar({
+        id_perfil: perfil.id,
+        id_contenido: contenido.id,
+        dispositivo: 'COMPUTADOR',
+      })
+      toast.success('Reproduccion registrada')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      toast.error('Error al registrar reproduccion: ' + msg)
+    }
   }
 
   return (
@@ -80,7 +103,7 @@ export function ContentCard({
           onLoad={() => setImageLoaded(true)}
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
         />
-        
+
         {/* Loading skeleton */}
         {!imageLoaded && (
           <div className="absolute inset-0 bg-muted animate-pulse" />
@@ -114,13 +137,11 @@ export function ContentCard({
               <Button
                 size="icon"
                 className="h-9 w-9 rounded-full bg-white text-black hover:bg-white/90"
-                asChild
+                onClick={handlePlay}
               >
-                <Link href={`/ver/${contenido.id}`}>
-                  <Play className="h-4 w-4 fill-current" />
-                </Link>
+                <Play className="h-4 w-4 fill-current" />
               </Button>
-              
+
               <Button
                 size="icon"
                 variant="outline"
@@ -136,7 +157,7 @@ export function ContentCard({
                   <Plus className="h-4 w-4" />
                 )}
               </Button>
-              
+
               <Button
                 size="icon"
                 variant="outline"

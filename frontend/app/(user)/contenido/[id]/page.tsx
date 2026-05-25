@@ -11,7 +11,6 @@ import {
   ThumbsUp,
   Share2,
   Flag,
-  ChevronDown,
   Star,
   Clock,
   Calendar,
@@ -35,7 +34,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { getPerfilActivo } from '@/lib/auth'
-import { contenidoAPI, temporadasAPI, reportesContenidoAPI, favoritosAPI } from '@/lib/api'
+import { contenidoAPI, temporadasAPI, reportesContenidoAPI, favoritosAPI, reproduccionesAPI } from '@/lib/api'
 import type { Contenido, Temporada, Perfil } from '@/lib/types'
 import { mockPerfiles } from '@/lib/mock-data'
 
@@ -58,13 +57,31 @@ export default function ContenidoDetallePage() {
   const [isSendingReport, setIsSendingReport] = useState(false)
   const [perfilActivo, setPerfilActivoState] = useState<{ id: number } | null>(null)
 
+  const handlePlay = async () => {
+    const perfil = getPerfilActivo()
+    if (!perfil) {
+      toast.error('Debes iniciar sesion para reproducir')
+      return
+    }
+    try {
+      await reproduccionesAPI.registrar({
+        id_perfil: perfil.id,
+        id_contenido: id,
+        dispositivo: 'COMPUTADOR',
+      })
+      toast.success('Reproduccion registrada')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      toast.error('Error al registrar reproduccion: ' + msg)
+    }
+  }
+
   const cargarContenido = useCallback(async () => {
     setLoading(true)
     try {
       const data = await contenidoAPI.obtenerPorId(id)
       setContenido(data)
 
-      // Cargar temporadas si es serie
       const esSerie = data.categoria === 'Serie' || data.categoria === 'Podcast'
       if (esSerie) {
         try {
@@ -78,7 +95,6 @@ export default function ContenidoDetallePage() {
         }
       }
 
-      // Cargar relacionados (misma categoria)
       try {
         const todos = await contenidoAPI.obtenerTodos({ categoria: data.categoria, por_pagina: 50 })
         const filtrados = todos.data.filter((c: Contenido) => c.id !== id).slice(0, 10)
@@ -87,7 +103,6 @@ export default function ContenidoDetallePage() {
         setRelacionados([])
       }
 
-      // Verificar si el contenido esta en favoritos del perfil activo
       const perfil = getPerfilActivo()
       if (perfil) {
         try {
@@ -123,22 +138,22 @@ export default function ContenidoDetallePage() {
   const toggleFavorite = useCallback(async () => {
     const perfil = getPerfilActivo()
     if (!perfil) {
-      toast.error("Debes iniciar sesion para guardar en tu lista")
+      toast.error('Debes iniciar sesion para guardar en tu lista')
       return
     }
     try {
       if (isFavorite) {
         await favoritosAPI.eliminar(perfil.id, id)
         setIsFavorite(false)
-        toast.success("Eliminado de Mi lista")
+        toast.success('Eliminado de Mi lista')
       } else {
         await favoritosAPI.agregar(perfil.id, id)
         setIsFavorite(true)
-        toast.success("Agregado a Mi lista")
+        toast.success('Agregado a Mi lista')
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Error desconocido"
-      toast.error("Error al actualizar Mi lista: " + msg)
+      const msg = error instanceof Error ? error.message : 'Error desconocido'
+      toast.error('Error al actualizar Mi lista: ' + msg)
     }
   }, [isFavorite, id])
 
@@ -207,7 +222,6 @@ export default function ContenidoDetallePage() {
         onLogout={() => router.push('/login')}
       />
 
-      {/* Hero Section */}
       <section className="relative h-[70vh] min-h-[500px]">
         <div className="absolute inset-0">
           <Image
@@ -223,7 +237,6 @@ export default function ContenidoDetallePage() {
 
         <div className="relative h-full container mx-auto px-4 md:px-12 flex items-end pb-16">
           <div className="max-w-3xl space-y-6">
-            {/* Badges */}
             <div className="flex items-center gap-3">
               {contenido.es_original && (
                 <Badge className="bg-primary text-primary-foreground">
@@ -232,12 +245,10 @@ export default function ContenidoDetallePage() {
               )}
             </div>
 
-            {/* Title */}
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-balance">
               {contenido.titulo}
             </h1>
 
-            {/* Meta */}
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               {contenido.calificacion_promedio != null && (
                 <span className="flex items-center gap-1 text-yellow-400">
@@ -266,17 +277,14 @@ export default function ContenidoDetallePage() {
               </Badge>
             </div>
 
-            {/* Actions */}
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
                 className="bg-white text-black hover:bg-white/90 font-semibold"
-                asChild
+                onClick={handlePlay}
               >
-                <Link href={'/ver/' + contenido.id}>
-                  <Play className="mr-2 h-5 w-5 fill-current" />
-                  Reproducir
-                </Link>
+                <Play className="mr-2 h-5 w-5 fill-current" />
+                Reproducir
               </Button>
 
               <Button
@@ -393,12 +401,10 @@ export default function ContenidoDetallePage() {
               </Dialog>
             </div>
 
-            {/* Synopsis */}
             <p className="text-foreground/80 max-w-2xl">
               {contenido.sinopsis}
             </p>
 
-            {/* Genres */}
             <div className="flex flex-wrap gap-2">
               {contenido.generos.map((genero) => (
                 <Link
@@ -414,7 +420,6 @@ export default function ContenidoDetallePage() {
         </div>
       </section>
 
-      {/* Content Section */}
       <section className="container mx-auto px-4 md:px-12 py-8">
         {esSerie && temporadas.length > 0 ? (
           <Tabs defaultValue="episodios" className="space-y-6">
@@ -425,7 +430,6 @@ export default function ContenidoDetallePage() {
             </TabsList>
 
             <TabsContent value="episodios" className="space-y-6">
-              {/* Season Selector */}
               {temporadas.length > 1 && (
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-muted-foreground">Temporada:</span>
@@ -443,7 +447,6 @@ export default function ContenidoDetallePage() {
                 </div>
               )}
 
-              {/* Episodes List */}
               <div className="space-y-4">
                 {temporadaActual?.episodios.map((episodio) => (
                   <Link

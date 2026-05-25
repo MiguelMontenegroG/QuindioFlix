@@ -27,23 +27,25 @@ def registrar_reproduccion(data: ReproduccionCreate) -> Reproduccion:
     try:
         cursor = conn.cursor()
         now = datetime.now(timezone.utc)
+
+        # Obtener el siguiente ID de la secuencia
+        cursor.execute(f"SELECT {fq('seq_reproducciones')}.NEXTVAL FROM DUAL")
+        id_rep = cursor.fetchone()[0]
+
+        # Insertar sin RETURNING INTO para evitar problemas con oracledb thin
         cursor.execute(
             f"""INSERT INTO {fq('REPRODUCCIONES')} (id_reproduccion, id_perfil, id_contenido,
                id_episodio, fecha_hora_inicio, dispositivo, porcentaje_avance)
-               VALUES (seq_reproducciones.NEXTVAL, :1, :2, :3, :4, :5, 0)
-               RETURNING id_reproduccion, fecha_hora_inicio INTO :6, :7""",
-            [data.id_perfil, data.id_contenido, data.id_episodio,
-             now, data.dispositivo,
-             cursor.var(int), cursor.var(str)]
+               VALUES (:1, :2, :3, :4, :5, :6, 0)""",
+            [id_rep, data.id_perfil, data.id_contenido, data.id_episodio, now, data.dispositivo]
         )
-        id_rep, fecha_ini = cursor.fetchone()
         conn.commit()
         cursor.close()
 
         return Reproduccion(
             id_reproduccion=id_rep, id_perfil=data.id_perfil,
             id_contenido=data.id_contenido, id_episodio=data.id_episodio,
-            fecha_hora_inicio=fecha_ini, dispositivo=data.dispositivo,
+            fecha_hora_inicio=now, dispositivo=data.dispositivo,
             porcentaje_avance=0
         )
     except oracledb.DatabaseError as e:
