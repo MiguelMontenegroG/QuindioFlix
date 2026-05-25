@@ -723,8 +723,8 @@ function mapBackendEmpleadoToFrontend(row: any): Empleado {
     fecha_contratacion: row.fecha_contratacion ?? row.FECHA_CONTRATACION,
     id_departamento: row.id_departamento ?? row.ID_DEPARTAMENTO,
     id_supervisor: row.id_supervisor ?? row.ID_SUPERVISOR,
-    departamento: row.nombre_depto ?? row.DEPARTAMENTO ?? row.departamento,
-    supervisor: row.supervisor ?? row.NOMBRE_SUPERVISOR,
+    departamento: row.nombre_depto ?? row.NOMBRE_DEPTO ?? row.DEPARTAMENTO ?? row.departamento,
+    supervisor: row.nombre_supervisor ?? row.NOMBRE_SUPERVISOR ?? row.supervisor,
   }
 }
 

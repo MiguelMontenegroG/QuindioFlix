@@ -41,9 +41,10 @@ def listar_empleados(
 
         offset = (pagina - 1) * por_pagina
         sql = f"""
-            SELECT e.*, d.nombre_depto
+            SELECT e.*, d.nombre_depto, sup.nombre AS nombre_supervisor
             FROM {fq('EMPLEADOS')} e
             JOIN {fq('DEPARTAMENTOS')} d ON d.id_departamento = e.id_departamento
+            LEFT JOIN {fq('EMPLEADOS')} sup ON sup.id_empleado = e.id_supervisor
             {where}
             ORDER BY e.nombre
             OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
