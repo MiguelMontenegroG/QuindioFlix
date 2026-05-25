@@ -10,10 +10,11 @@ Universidad del Quindio
 |---------------|-------------------------------------------------|
 | Backend       | FastAPI (Python 3.11+)                          |
 | Frontend      | Next.js 16 + React 19 + TypeScript              |
-| Base de datos | Oracle 19c                                      |
+| Base de datos | Oracle 19c (usuario C##quindioflix, esquema C##QUINDIOFLIX) |
 | UI            | Radix UI + Tailwind CSS 4 + shadcn/ui           |
 | Graficos      | Recharts 2.15.0                                 |
 | Autenticacion | JWT (python-jose) + bcrypt (passlib)            |
+| Monitoreo     | SSE (Server-Sent Events) para datos en tiempo real |
 
 ## Estructura del proyecto
 
@@ -165,7 +166,7 @@ Crear `backend/.env` con las siguientes variables (ver `.env.example` para valor
 | DB_USER              | Usuario Oracle del esquema            | C##quindioflix             |
 | DB_PASS              | Contrasena Oracle                     | (obligatorio)              |
 | DB_DSN               | Cadena de conexion Oracle             | localhost:1521/BD          |
-| DB_SCHEMA            | Esquema de Oracle                     | QUINDIOFLIX                |
+| DB_SCHEMA            | Esquema de Oracle (usar C##QUINDIOFLIX para common user CDB) | C##QUINDIOFLIX |
 | SECRET_KEY           | Clave secreta para JWT                | (cambiar en produccion)    |
 | ALGORITHM            | Algoritmo JWT                         | HS256                      |
 | ACCESS_TOKEN_EXPIRE_MINUTES | Duracion del token JWT         | 1440                       |
@@ -275,8 +276,9 @@ Existen 41 usuarios en la tabla USUARIOS con datos reales distribuidos entre Bog
 - Autenticacion con JWT y manejo de perfiles
 - Catalogo con busqueda, filtros por categoria y genero
 - Reproductor de video con control de progreso
-- Administracion: catalogo, usuarios, pagos, empleados, reportes, roles
-- Panel DBA: EXPLAIN PLAN, transacciones activas, tablespaces, consultas SQL
-- Monitoreo SSE en tiempo real
+- Administracion: catalogo, usuarios, pagos, empleados, reportes, planes
+- **Terminal Oracle:** Editor SQL interactivo con consultas predefinidas en 8 categorias (Empleados, Contenido, Usuarios, Pagos, Reproducciones, Reportes, Esquema DBA, Analitica)
+- **Monitoreo SSE en tiempo real:** Dashboard de metricas, ultimos registros y graficos (pastel/barras/linea) con actualizacion cada 3 segundos
+- Panel DBA: EXPLAIN PLAN, transacciones activas, tablespaces, vistas materializadas
 - Dashboard de analitica con KPIs, graficos Recharts
 - Panel de moderacion de reportes de contenido
