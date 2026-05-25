@@ -63,7 +63,9 @@ export default function PagosAdminPage() {
   }
 
   const stats = {
-    total: pagos.reduce((sum, p) => sum + Number(p.monto), 0),
+    total: pagos
+      .filter((p) => p.estado_pago === 'EXITOSO')
+      .reduce((sum, p) => sum + Number(p.monto), 0),
     exitosos: pagos.filter((p) => p.estado_pago === 'EXITOSO').length,
     fallidos: pagos.filter((p) => p.estado_pago === 'FALLIDO').length,
     reembolsados: pagos.filter((p) => p.estado_pago === 'REEMBOLSADO').length,
