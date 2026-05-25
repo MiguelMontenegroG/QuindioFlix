@@ -386,21 +386,20 @@ function normalizeReporteEstado(value?: string) {
 
 function mapBackendReporteToFrontend(r: any): Reporte {
   return {
-    id: r.id_reporte ?? r.id,
-    id_perfil: r.id_perfil_reportador ?? r.id_perfil,
-    id_contenido: r.id_contenido,
-    motivo: r.motivo,
-    descripcion: r.descripcion,
-    estado: normalizeReporteEstado(r.estado_reporte ?? r.estado),
-    fecha_creacion: r.fecha_reporte ?? r.fecha_creacion,
-    fecha_resolucion: r.fecha_resolucion,
-    id_moderador: r.id_moderador,
-    nombre_reportador: r.nombre_reportador,
-    titulo_contenido: r.titulo_contenido,
-    comentario_moderador: r.comentario_moderador,
+    id: r.ID_REPORTE ?? r.id_reporte ?? r.id,
+    id_perfil: r.ID_PERFIL_REPORTADOR ?? r.id_perfil_reportador ?? r.id_perfil,
+    id_contenido: r.ID_CONTENIDO ?? r.id_contenido,
+    motivo: r.MOTIVO ?? r.motivo,
+    descripcion: r.DESCRIPCION ?? r.descripcion,
+    estado: normalizeReporteEstado(r.ESTADO_REPORTE ?? r.estado_reporte ?? r.estado),
+    fecha_creacion: r.FECHA_REPORTE ?? r.fecha_reporte ?? r.fecha_creacion,
+    fecha_resolucion: r.FECHA_RESOLUCION ?? r.fecha_resolucion,
+    id_moderador: r.ID_MODERADOR ?? r.id_moderador,
+    nombre_reportador: r.NOMBRE_REPORTADOR ?? r.nombre_reportador,
+    titulo_contenido: r.TITULO_CONTENIDO ?? r.titulo_contenido,
+    comentario_moderador: r.COMENTARIO_MODERADOR ?? r.comentario_moderador,
   }
 }
-
 export const reportesContenidoAPI = {
   crear: async (data: { id_perfil: number; id_contenido: number; motivo: string; descripcion?: string }) => {
     const payload: any = {
@@ -542,13 +541,13 @@ export const planesAPI = {
 // ==================== PAGOS ====================
 function mapBackendPagoToFrontend(bp: any): Pago {
   return {
-    id: bp.id_pago ?? bp.id,
-    id_usuario: bp.id_usuario,
-    monto: bp.monto,
-    fecha_pago: bp.fecha_pago,
-    metodo_pago: bp.metodo_pago,
-    estado_pago: bp.estado_pago,
-    fecha_vencimiento: bp.fecha_vencimiento,
+    id: bp.ID_PAGO ?? bp.id_pago ?? bp.id,
+    id_usuario: bp.ID_USUARIO ?? bp.id_usuario,
+    monto: bp.MONTO ?? bp.monto,
+    fecha_pago: bp.FECHA_PAGO ?? bp.fecha_pago,
+    metodo_pago: bp.METODO_PAGO ?? bp.metodo_pago,
+    estado_pago: bp.ESTADO_PAGO ?? bp.estado_pago,
+    fecha_vencimiento: bp.FECHA_VENCIMIENTO ?? bp.fecha_vencimiento,
   }
 }
 
@@ -566,14 +565,15 @@ export const pagosAPI = {
     fetchAPI<{ id_usuario: number; monto: number }>(`/pagos/calcular-monto/${idUsuario}`),
 
   // Para soporte
-  obtenerTodos: (params?: { estado?: string; pagina?: number }) => {
+  obtenerTodos: async (params?: { estado?: string; pagina?: number }) => {
     const searchParams = new URLSearchParams()
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined) searchParams.append(key, String(value))
       })
     }
-    return fetchAPI<{ data: Pago[]; total: number }>(`/pagos?${searchParams}`)
+    const result = await fetchAPI<{ data: any[]; total: number }>(`/pagos?${searchParams}`)
+    return { ...result, data: result.data.map(mapBackendPagoToFrontend) }
   },
 
   actualizarEstado: (id: number, estado: string) =>

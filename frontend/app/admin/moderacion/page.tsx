@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertCircle, Check, X, Eye, Loader2 } from 'lucide-react';
+import { AlertCircle, Check, X, Eye, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { reportesContenidoAPI } from '@/lib/api';
@@ -9,35 +9,44 @@ import type { Reporte } from '@/lib/types';
 
 export default function ModerationPage() {
   const [reports, setReports] = useState<Reporte[]>([]);
+  const [totalReports, setTotalReports] = useState(0);
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
   const [selectedReport, setSelectedReport] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isResolving, setIsResolving] = useState(false);
+  const [pagina, setPagina] = useState(1);
 
-  const cargarReportes = async () => {
+  const cargarReportes = async (pag: number = 1, estado?: string) => {
     setIsLoading(true);
     try {
-      const response = await reportesContenidoAPI.obtenerTodos();
+      const params: any = { pagina: pag };
+      if (estado && estado !== 'todos') {
+        params.estado = estado;
+      }
+      const response = await reportesContenidoAPI.obtenerTodos(params);
       if (response?.data) {
         setReports(response.data);
+        setTotalReports(response.total);
       }
-    } catch {
-      console.warn('API no disponible');
+    } catch (err) {
+      console.warn('Error al cargar reportes:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    cargarReportes();
-  }, []);
+    cargarReportes(1, selectedStatus);
+    setPagina(1);
+  }, [selectedStatus]);
 
-  const filteredReports = reports.filter((r) => {
-    if (selectedStatus === 'todos') return true;
-    return r.estado === selectedStatus;
-  });
+  useEffect(() => {
+    cargarReportes(pagina, selectedStatus);
+  }, [pagina]);
 
   const pendingCount = reports.filter((r) => r.estado === 'pendiente').length;
+  const resolvedCount = reports.filter((r) => r.estado === 'resuelto').length;
+  const totalPages = Math.ceil(totalReports / 20);
 
   const resolveReport = async (id: number, accion: 'resuelto' | 'rechazado') => {
     setIsResolving(true);
@@ -48,9 +57,9 @@ export default function ModerationPage() {
       });
       toast.success(`Reporte ${accion === 'resuelto' ? 'resuelto' : 'rechazado'} correctamente`);
       setSelectedReport(null);
-      cargarReportes();
-    } catch {
-      toast.error('Error al procesar el reporte');
+      cargarReportes(pagina, selectedStatus);
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al procesar el reporte');
     } finally {
       setIsResolving(false);
     }
@@ -109,10 +118,11 @@ export default function ModerationPage() {
           <p className="text-muted-foreground">Revisa y resuelve reportes de contenido inapropiado</p>
         </div>
 
+        {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Total reportes</p>
-            <p className="text-3xl font-bold text-foreground">{reports.length}</p>
+            <p className="text-3xl font-bold text-foreground">{totalReports}</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Pendientes</p>
@@ -120,92 +130,105 @@ export default function ModerationPage() {
           </div>
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Resueltos</p>
-            <p className="text-3xl font-bold text-green-500">
-              {reports.filter((r) => r.estado === 'resuelto').length}
-            </p>
+            <p className="text-3xl font-bold text-green-500">{resolvedCount}</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-sm text-muted-foreground mb-2">Tasa de resolucion</p>
             <p className="text-3xl font-bold text-accent">
-              {Math.round(
-                (reports.filter((r) => r.estado === 'resuelto').length / (reports.length || 1)) * 100
-              )}
-              %
+              {totalReports > 0 ? Math.round((resolvedCount / totalReports) * 100) : 0}%
             </p>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-8">
-          <Button variant={selectedStatus === 'todos' ? 'default' : 'outline'} onClick={() => setSelectedStatus('todos')}>Todos</Button>
-          <Button variant={selectedStatus === 'pendiente' ? 'default' : 'outline'} onClick={() => setSelectedStatus('pendiente')}>Pendientes</Button>
-          <Button variant={selectedStatus === 'resuelto' ? 'default' : 'outline'} onClick={() => setSelectedStatus('resuelto')}>Resueltos</Button>
+        {/* Filtros */}
+        <div className="flex gap-2 mb-8 flex-wrap">
+          <Button variant={selectedStatus === 'todos' ? 'default' : 'outline'} onClick={() => { setSelectedStatus('todos'); setPagina(1); }}>Todos</Button>
+          <Button variant={selectedStatus === 'pendiente' ? 'default' : 'outline'} onClick={() => { setSelectedStatus('pendiente'); setPagina(1); }}>Pendientes</Button>
+          <Button variant={selectedStatus === 'resuelto' ? 'default' : 'outline'} onClick={() => { setSelectedStatus('resuelto'); setPagina(1); }}>Resueltos</Button>
+          <Button variant={selectedStatus === 'rechazado' ? 'default' : 'outline'} onClick={() => { setSelectedStatus('rechazado'); setPagina(1); }}>Rechazados</Button>
         </div>
 
+        {/* Lista de reportes */}
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-accent" />
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredReports.map((report: any) => (
-              <div
-                key={report.id}
-                className="bg-card border border-border rounded-lg p-6 hover:border-accent transition-colors cursor-pointer"
-                onClick={() => setSelectedReport(selectedReport === report.id ? null : report.id)}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-bold text-foreground">
-                        {report.titulo_contenido || `Contenido #${report.id_contenido}`}
-                      </h3>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(report.estado)}`}>
-                        {report.estado === 'pendiente' ? 'Pendiente' : report.estado === 'resuelto' ? 'Resuelto' : 'Rechazado'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Reportado por {report.nombre_reportador || `Perfil #${report.id_perfil}`} | {report.fecha_creacion ? new Date(report.fecha_creacion).toLocaleDateString('es-CO') : 'Fecha no disponible'}
-                    </p>
-                  </div>
-                  <Eye className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                </div>
-
-                <div className="flex items-center gap-2 mb-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getReasonColor(getMotivoClave(report.motivo))}`}>
-                    {getReasonText(report.motivo)}
-                  </span>
-                </div>
-
-                {selectedReport === report.id && (
-                  <div className="border-t border-border pt-4 mt-4">
-                    <p className="text-sm text-muted-foreground mb-4">
-                      <span className="font-semibold text-foreground">Descripcion: </span>
-                      {getDescripcionText(report)}
-                    </p>
-                    {report.estado === 'pendiente' && (
-                      <div className="flex gap-3">
-                        <Button onClick={(e) => { e.stopPropagation(); resolveReport(report.id, 'resuelto'); }} disabled={isResolving} className="gap-2">
-                          <Check className="w-4 h-4" /> Resolver
-                        </Button>
-                        <Button variant="outline" onClick={(e) => { e.stopPropagation(); resolveReport(report.id, 'rechazado'); }} disabled={isResolving} className="gap-2">
-                          <X className="w-4 h-4" /> Rechazar
-                        </Button>
+            {reports.length > 0 ? (
+              reports.map((report: any) => (
+                <div
+                  key={report.id}
+                  className="bg-card border border-border rounded-lg p-6 hover:border-accent transition-colors cursor-pointer"
+                  onClick={() => setSelectedReport(selectedReport === report.id ? null : report.id)}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-bold text-foreground">
+                          {report.titulo_contenido || `Contenido #${report.id_contenido}`}
+                        </h3>
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(report.estado)}`}>
+                          {report.estado === 'pendiente' ? 'Pendiente' : report.estado === 'resuelto' ? 'Resuelto' : 'Rechazado'}
+                        </span>
                       </div>
-                    )}
+                      <p className="text-sm text-muted-foreground">
+                        Reportado por {report.nombre_reportador || `Perfil #${report.id_perfil}`} | {report.fecha_creacion ? new Date(report.fecha_creacion).toLocaleDateString('es-CO') : 'Fecha no disponible'}
+                      </p>
+                    </div>
+                    <Eye className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                   </div>
-                )}
+
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getReasonColor(getMotivoClave(report.motivo))}`}>
+                      {getReasonText(report.motivo)}
+                    </span>
+                  </div>
+
+                  {selectedReport === report.id && (
+                    <div className="border-t border-border pt-4 mt-4">
+                      <p className="text-sm text-muted-foreground mb-4">
+                        <span className="font-semibold text-foreground">Descripcion: </span>
+                        {getDescripcionText(report)}
+                      </p>
+                      {report.estado === 'pendiente' && (
+                        <div className="flex gap-3">
+                          <Button onClick={(e) => { e.stopPropagation(); resolveReport(report.id, 'resuelto'); }} disabled={isResolving} className="gap-2">
+                            <Check className="w-4 h-4" /> Resolver
+                          </Button>
+                          <Button variant="outline" onClick={(e) => { e.stopPropagation(); resolveReport(report.id, 'rechazado'); }} disabled={isResolving} className="gap-2">
+                            <X className="w-4 h-4" /> Rechazar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 bg-card border border-border rounded-lg">
+                <AlertCircle className="w-12 h-12 text-muted-foreground/50 mb-4" />
+                <h2 className="text-lg font-semibold text-foreground mb-2">
+                  {selectedStatus === 'todos' ? 'Sin reportes' : 'Sin reportes en esta categoria'}
+                </h2>
+                <p className="text-muted-foreground">Excelente trabajo! No hay reportes pendientes.</p>
               </div>
-            ))}
+            )}
           </div>
         )}
 
-        {filteredReports.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 bg-card border border-border rounded-lg">
-            <AlertCircle className="w-12 h-12 text-muted-foreground/50 mb-4" />
-            <h2 className="text-lg font-semibold text-foreground mb-2">
-              {selectedStatus === 'todos' ? 'Sin reportes' : 'Sin reportes en esta categoria'}
-            </h2>
-            <p className="text-muted-foreground">Excelente trabajo! No hay reportes pendientes.</p>
+        {/* Paginacion */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 mt-8">
+            <Button variant="outline" size="sm" onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={pagina <= 1}>
+              <ChevronLeft className="w-4 h-4" /> Anterior
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Pagina {pagina} de {totalPages} ({totalReports} reportes)
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setPagina((p) => Math.min(totalPages, p + 1))} disabled={pagina >= totalPages}>
+              Siguiente <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
         )}
       </div>

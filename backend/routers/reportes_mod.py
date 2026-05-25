@@ -113,7 +113,7 @@ def listar_reportes(
         release_connection(conn, "admin")
 
 
-@router.put("/{id_reporte}/resolver", response_model=Reporte)
+@router.put("/{id_reporte}/resolver")
 def resolver_reporte(id_reporte: int, data: ResolverReporte):
     """Resuelve o rechaza un reporte (moderador)."""
     conn = get_connection("admin")
@@ -142,21 +142,31 @@ def resolver_reporte(id_reporte: int, data: ResolverReporte):
                LEFT JOIN {fq("PERFILES")} p ON p.id_perfil = r.id_perfil_reportador
                LEFT JOIN {fq("CONTENIDO")} c ON c.id_contenido = r.id_contenido
                WHERE r.id_reporte = :1""", [id_reporte])
+        columns = [desc[0].lower() for desc in cursor.description]
         row = cursor.fetchone()
         cursor.close()
         if not row:
             raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
-        return Reporte(
-            id_reporte=row[0], id_perfil_reportador=row[1], id_contenido=row[2],
-            motivo=row[3], fecha_reporte=row[4], estado_reporte=row[5],
-            id_moderador=row[6], fecha_resolucion=row[7], comentario_moderador=row[8],
-            nombre_reportador=row[9], titulo_contenido=row[10]
-        )
+        result = dict(zip(columns, row))
+        # Convertir fechas Oracle a string ISO
+        for key in ('fecha_reporte', 'fecha_resolucion'):
+            if key in result and result[key] is not None:
+                val = result[key]
+                if hasattr(val, 'isoformat'):
+                    result[key] = val.isoformat()
+                else:
+                    result[key] = str(val)
+        return result
     except HTTPException:
         raise
     except oracledb.DatabaseError as e:
         conn.rollback()
         handle_oracle_error(e)
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"[Resolver Error] Inesperado: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al resolver reporte: {str(e)}")
     finally:
         release_connection(conn, "admin")

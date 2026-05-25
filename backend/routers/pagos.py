@@ -1,4 +1,4 @@
-﻿"""Routers de pagos y planes."""
+"""Routers de pagos y planes."""
 
 import oracledb
 from fastapi import APIRouter, HTTPException, Depends
@@ -50,8 +50,19 @@ def listar_todos_pagos(
         binds["limit"] = por_pagina
         cursor.execute(sql, binds)
 
-        columns = [desc[0] for desc in cursor.description]
-        pagos = [dict(zip(columns, r)) for r in cursor]
+        columns = [desc[0].lower() for desc in cursor.description]
+        pagos = []
+        for row in cursor:
+            pago = dict(zip(columns, row))
+            # Convertir fechas Oracle a string ISO
+            for key in ('fecha_pago', 'fecha_vencimiento'):
+                if key in pago and pago[key] is not None:
+                    val = pago[key]
+                    if hasattr(val, 'isoformat'):
+                        pago[key] = val.isoformat()
+                    else:
+                        pago[key] = str(val)
+            pagos.append(pago)
         cursor.close()
         return {"data": pagos, "total": total, "pagina": pagina, "por_pagina": por_pagina}
     finally:
