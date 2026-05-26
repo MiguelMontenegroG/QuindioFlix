@@ -24,7 +24,7 @@ router = APIRouter(prefix="/contenido", tags=["Contenido"])
 @router.get("")
 def listar(
     q: str = Query("", description="Busqueda por titulo"),
-    categoria: int = Query(None, description="ID de categoria"),
+    categoria: str = Query(None, description="ID o nombre de categoria (1-5, o 'Pelicula', 'Serie', 'Documental', 'Musica', 'Podcast')"),
     genero: int = Query(None, description="ID de genero"),
     anio: int = Query(None, description="Anio de lanzamiento"),
     clasificacion: str = Query(None, description="Clasificacion TP, +7, +13, +16, +18"),
@@ -32,8 +32,24 @@ def listar(
     por_pagina: int = Query(20, ge=1, le=100),
 ):
     """Lista el catalogo de contenido con filtros y paginacion."""
+    # Convertir categoria string a ID numerico si es necesario
+    categoria_id = None
+    if categoria is not None and categoria.strip():
+        CAT_NOMBRES = {
+            'pelicula': 1, 'película': 1,
+            'serie': 2,
+            'documental': 3,
+            'musica': 4, 'música': 4,
+            'podcast': 5,
+        }
+        cat_lower = categoria.strip().lower()
+        if cat_lower.isdigit():
+            categoria_id = int(cat_lower)
+        elif cat_lower in CAT_NOMBRES:
+            categoria_id = CAT_NOMBRES[cat_lower]
+
     params = BusquedaParams(
-        q=q, categoria=categoria, genero=genero,
+        q=q, categoria=categoria_id, genero=genero,
         anio=anio, clasificacion=clasificacion,
         pagina=pagina, por_pagina=por_pagina
     )

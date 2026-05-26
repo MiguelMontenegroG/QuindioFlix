@@ -147,6 +147,17 @@ const CATEGORIA_MAP: Record<number, string> = {
   5: 'Podcast',
 }
 
+// Mapa inverso: nombre categoria -> id numerico
+const CATEGORIA_NAME_TO_ID: Record<string, number> = {
+  'pelicula': 1,
+  'serie': 2,
+  'documental': 3,
+  'musica': 4,
+  'podcast': 5,
+  'película': 1,
+  'música': 4,
+}
+
 /** Extrae un string seguro de un campo que puede ser string, nÃºmero u objeto con {nombre_categoria, nombre} */
 function safeString(val: any): string {
   if (typeof val === 'string') return val
@@ -231,7 +242,18 @@ export const contenidoAPI = {
     por_pagina?: number
   }) => {
     const searchParams = new URLSearchParams()
-    if (params?.categoria !== undefined) searchParams.append('categoria', String(params.categoria))
+    if (params?.categoria !== undefined) {
+      // Convertir nombre de categoria a ID numerico si es necesario
+      const catValue = params.categoria
+      if (typeof catValue === 'string' && isNaN(Number(catValue))) {
+        const catId = CATEGORIA_NAME_TO_ID[catValue.toLowerCase()]
+        if (catId !== undefined) {
+          searchParams.append('categoria', String(catId))
+        }
+      } else {
+        searchParams.append('categoria', String(catValue))
+      }
+    }
     if (params?.genero !== undefined) searchParams.append('genero', String(params.genero))
     if (params?.año !== undefined) searchParams.append('anio', String(params.año))
     if (params?.clasificacion !== undefined) searchParams.append('clasificacion', String(params.clasificacion))
