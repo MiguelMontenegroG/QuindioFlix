@@ -98,6 +98,20 @@ def obtener_estadisticas_generales() -> dict:
         for row in cursor:
             stats["top_contenido"].append({"titulo": row[0], "vistas": row[1]})
 
+        # Contenido mejor calificado (top 5)
+        cursor.execute(
+            f"""SELECT c.titulo, ROUND(AVG(cal.estrellas), 2) as promedio, COUNT(cal.id_calificacion) as votos
+                FROM {fq('CALIFICACIONES')} cal
+                JOIN {fq('CONTENIDO')} c ON cal.id_contenido = c.id_contenido
+                GROUP BY c.titulo
+                HAVING COUNT(cal.id_calificacion) >= 2
+                ORDER BY promedio DESC
+                FETCH FIRST 5 ROWS ONLY"""
+        )
+        stats["top_calificado"] = []
+        for row in cursor:
+            stats["top_calificado"].append({"titulo": row[0], "promedio": float(row[1]), "votos": row[2]})
+
         # Pagos pendientes
         cursor.execute(
             f"""SELECT COUNT(*)

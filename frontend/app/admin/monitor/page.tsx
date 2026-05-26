@@ -8,7 +8,7 @@ import {
 import {
   Users, Film, PlayCircle, DollarSign,
   TrendingUp, AlertTriangle, Activity,
-  CreditCard, Clock, UserPlus
+  CreditCard, Clock, UserPlus, Star
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,12 +34,13 @@ interface DBStats {
   timestamp: string;
   planes: { nombre: string; total: number }[];
   top_contenido: { titulo: string; vistas: number }[];
+  top_calificado: { titulo: string; promedio: number; votos: number }[];
 }
 
 interface ActivityData {
   ultimos_usuarios: { ID_USUARIO: number; NOMBRE: string; EMAIL: string; FECHA: string }[];
   ultimas_reproducciones: { ID_REPRODUCCION: number; TITULO: string; FECHA: string }[];
-  ultimos_pagos: { ID_PAGO: number; NOMBRE: string; MONTO: number; ESTADO_PAGO: string; FECHA: string }[];
+  ultimos_pagos: { ID_PAGO: number; NOMBRE: number; MONTO: number; ESTADO_PAGO: string; FECHA: string }[];
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -417,7 +418,7 @@ export default function MonitorPage() {
         </div>
 
         {/* Timeline en tiempo real */}
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-zinc-900 border-zinc-800 mb-8">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Activity className="w-4 h-4 text-cyan-400" />
@@ -447,6 +448,52 @@ export default function MonitorPage() {
               <div className="flex items-center justify-center h-[250px] text-gray-500">
                 <Clock className="w-5 h-5 mr-2 animate-pulse" />
                 Acumulando datos en vivo...
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Panel de contenido mejor calificado */}
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Star className="w-4 h-4 text-yellow-400" />
+              Contenido Mejor Calificado
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stats && stats.top_calificado && stats.top_calificado.length > 0 ? (
+              <div className="space-y-4">
+                {stats.top_calificado.map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                        index === 0 ? "bg-yellow-500/20 text-yellow-400" :
+                        index === 1 ? "bg-gray-400/20 text-gray-300" :
+                        index === 2 ? "bg-amber-700/20 text-amber-500" :
+                        "bg-zinc-700/50 text-zinc-400"
+                      }`}>
+                        {index + 1}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium text-white">{item.titulo}</p>
+                        <p className="text-xs text-gray-500">{item.votos} {item.votos === 1 ? 'voto' : 'votos'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                      <span className="text-lg font-bold text-yellow-400">{item.promedio.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-[200px] text-gray-500">
+                <Star className="w-5 h-5 mr-2" />
+                {stats ? 'Sin datos de calificaciones disponibles' : 'Cargando datos...'}
               </div>
             )}
           </CardContent>
