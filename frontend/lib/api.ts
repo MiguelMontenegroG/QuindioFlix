@@ -190,7 +190,7 @@ function mapBackendContenidoToFrontend(bc: any): Contenido {
     id: bc.id_contenido ?? bc.id,
     titulo: bc.titulo ?? bc.TITULO,
     sinopsis: bc.sinopsis ?? bc.SINOPSIS ?? '',
-    año: bc.anio_lanzamiento ?? bc.año ?? bc.ANIO_LANZAMIENTO,
+    año: bc.anio_lanzamiento ?? bc["año"] ?? bc.ANIO_LANZAMIENTO,
     duracion_minutos: bc.duracion ? Math.round(bc.duracion / 60) : (bc.duracion_minutos || 0),
     clasificacion_edad: safeString(bc.clasificacion_edad ?? bc.CLASIFICACION_EDAD) as any,
     categoria: categoria as any,
@@ -213,7 +213,7 @@ function mapBackendContenidoToFrontend(bc: any): Contenido {
 function mapFrontendContenidoToBackend(fc: any): any {
   const backend: any = {
     titulo: fc.titulo,
-    anio_lanzamiento: fc.año,
+    anio_lanzamiento: fc["año"],
     duracion: (fc.duracion_minutos || 0) * 60,
     sinopsis: fc.sinopsis,
     clasificacion_edad: fc.clasificacion_edad,

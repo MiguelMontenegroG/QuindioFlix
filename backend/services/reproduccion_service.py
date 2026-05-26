@@ -199,13 +199,15 @@ def agregar_favorito(data: FavoritoCreate) -> Favorito:
         cursor.execute(
             f"""INSERT INTO {fq('FAVORITOS')} (id_perfil, id_contenido, fecha_agregado)
                VALUES (:1, :2, :3)""",
-            {
-                "p_id_perfil": data.id_perfil,
-                "p_id_contenido": data.id_contenido,
-                "p_estrellas": data.estrellas,
-                "p_resenia": data.resenia,
-                "p_fecha": now,
-            }
+            [data.id_perfil, data.id_contenido, now]
+        )
+        conn.commit()
+        cursor.close()
+
+        return Favorito(
+            id_perfil=data.id_perfil,
+            id_contenido=data.id_contenido,
+            fecha_agregado=now,
         )
     except oracledb.DatabaseError as e:
         conn.rollback()
