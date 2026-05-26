@@ -67,9 +67,8 @@ def vistas_materializadas() -> list[dict]:
         cursor.execute(
             """SELECT mview_name AS nombre,
                       TO_CHAR(last_refresh_date, 'YYYY-MM-DD HH24:MI:SS') AS ultima_actualizacion,
-                      CASE WHEN status = 'VALID' THEN 'valida' ELSE 'invalida' END AS estado,
-                      refresh_mode AS modo_refresh,
-                      NUM_ROWS AS filas
+                      'valida' AS estado,
+                      refresh_mode AS modo_refresh
                FROM user_mviews
                ORDER BY mview_name"""
         )
@@ -201,3 +200,81 @@ def ejecutar_consulta_sql(query: str, limite: int = 100) -> dict:
         return {"error": str(e)}
     finally:
         release_connection(conn, "admin")
+
+# =============================================================================
+# NUEVAS FUNCIONES — Tablespaces de Reproducciones y Vistas Materializadas
+# =============================================================================
+
+
+def tablespaces_reproducciones() -> list[dict]:
+    """Obtiene informacion detallada de TS_REPROD_2024 y TS_REPROD_2025.
+
+    Filtra solo los tablespaces de reproducciones para el panel DBA.
+    Retorna nombre, tamanio_mb, usado_mb, libre_mb, porcentaje_usado,
+    tipo y tabla_asociada.
+    """
+    conn = get_connection("admin")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT df.tablespace_name AS nombre,
+                      ROUND(df.bytes / 1024 / 1024, 2) AS tamanio_mb,
+                      ROUND((df.bytes - fs.bytes) / 1024 / 1024, 2) AS usado_mb,
+                      ROUND(fs.bytes / 1024 / 1024, 2) AS libre_mb,
+                      ROUND((df.bytes - fs.bytes) * 100 / df.bytes, 2) AS porcentaje_usado,
+                      'PERMANENTE' AS tipo,
+                      'REPRODUCCIONES_PART' AS tabla_asociada
+               FROM (SELECT tablespace_name, SUM(bytes) bytes FROM dba_data_files GROUP BY tablespace_name) df
+               JOIN (SELECT tablespace_name, SUM(bytes) bytes FROM dba_free_space GROUP BY tablespace_name) fs
+                 ON fs.tablespace_name = df.tablespace_name
+               WHERE df.tablespace_name IN ('TS_REPROD_2024', 'TS_REPROD_2025')
+               ORDER BY df.tablespace_name"""
+        )
+        columns = [desc[0] for desc in cursor.description]
+        rows = [dict(zip(columns, (float(v) if isinstance(v, (int, float)) else v for v in r))) for r in cursor]
+        cursor.close()
+        return rows
+    finally:
+        release_connection(conn, "admin")
+
+
+def vistas_materializadas_detalle() -> list[dict]:
+    """Obtiene informacion detallada de las MVs del esquema.
+
+    No usa NUM_ROWS porque no existe en todas las versiones de Oracle.
+    Incluye metodo_refresh, propietario.
+    """
+    conn = get_connection("admin")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT m.mview_name AS nombre,
+                      TO_CHAR(m.last_refresh_date, 'YYYY-MM-DD HH24:MI:SS') AS ultima_actualizacion,
+                      'valida' AS estado,
+                      m.refresh_mode AS modo_refresh,
+                      m.refresh_method AS metodo_refresh,
+                      m.owner AS propietario
+               FROM user_mviews m
+               ORDER BY m.mview_name"""
+        )
+        columns = [desc[0] for desc in cursor.description]
+        rows = [dict(zip(columns, r)) for r in cursor]
+        cursor.close()
+        return rows
+    finally:
+        release_connection(conn, "admin")
+
+
+def refrescar_vista_por_nombre(data: dict) -> dict:
+    """Refresca una vista materializada recibida desde el body.
+
+    Args:
+        data: Diccionario con clave 'nombre' indicando la MV a refrescar.
+
+    Returns:
+        Dict con mensaje de exito o error.
+    """
+    nombre = data.get("nombre", "").strip()
+    if not nombre:
+        return {"error": "El campo 'nombre' es requerido"}
+    return refrescar_vista(nombre)

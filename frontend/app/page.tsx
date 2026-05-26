@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Play,
@@ -16,10 +16,29 @@ import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ContentCard } from '@/components/content/content-card'
-import { mockContenido } from '@/lib/mock-data'
+import { contenidoAPI } from '@/lib/api'
+import type { Contenido } from '@/lib/types'
 
 export default function LandingPage() {
   const [email, setEmail] = useState('')
+  const [destacados, setDestacados] = useState<Contenido[]>([])
+  const [loadingDestacados, setLoadingDestacados] = useState(true)
+
+  useEffect(() => {
+    async function cargarDestacados() {
+      try {
+        const response = await contenidoAPI.obtenerTodos({ por_pagina: 4 })
+        if (response?.data) {
+          setDestacados(response.data)
+        }
+      } catch (err) {
+        console.error('Error cargando contenido destacado:', err)
+      } finally {
+        setLoadingDestacados(false)
+      }
+    }
+    cargarDestacados()
+  }, [])
 
   const features = [
     {
@@ -44,7 +63,6 @@ export default function LandingPage() {
     },
   ]
 
-  const destacados = mockContenido.slice(0, 4)
   const planes = [
     {
       nombre: 'Basico',
@@ -191,9 +209,17 @@ export default function LandingPage() {
             </Button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {destacados.map((item) => (
-              <ContentCard key={item.id} contenido={item} showActions={false} />
-            ))}
+            {loadingDestacados ? (
+              <>
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="aspect-[2/3] bg-muted animate-pulse rounded-lg" />
+                ))}
+              </>
+            ) : (
+              destacados.map((item) => (
+                <ContentCard key={item.id} contenido={item} showActions={false} />
+              ))
+            )}
           </div>
         </div>
       </section>

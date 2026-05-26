@@ -34,7 +34,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { getPerfilActivo } from '@/lib/auth'
-import { contenidoAPI, temporadasAPI, reportesContenidoAPI, favoritosAPI, reproduccionesAPI } from '@/lib/api'
+import { contenidoAPI, temporadasAPI, reportesContenidoAPI, favoritosAPI, reproduccionesAPI, calificacionesAPI } from '@/lib/api'
 import type { Contenido, Temporada, Perfil } from '@/lib/types'
 import { mockPerfiles } from '@/lib/mock-data'
 
@@ -55,6 +55,7 @@ export default function ContenidoDetallePage() {
   const [reportMotivo, setReportMotivo] = useState('')
   const [reportDescripcion, setReportDescripcion] = useState('')
   const [isSendingReport, setIsSendingReport] = useState(false)
+  const [isSendingRating, setIsSendingRating] = useState(false)
   const [perfilActivo, setPerfilActivoState] = useState<{ id: number } | null>(null)
 
   const handlePlay = async () => {
@@ -112,6 +113,19 @@ export default function ContenidoDetallePage() {
         } catch {
           setIsFavorite(false)
         }
+
+        // Cargar calificacion existente del usuario para este contenido
+        try {
+          const calificaciones = await calificacionesAPI.obtenerPorContenido(id)
+          const miCalificacion = calificaciones.find(
+            (c: any) => c.id_perfil === perfil.id
+          )
+          if (miCalificacion) {
+            setUserRating(miCalificacion.estrellas)
+          }
+        } catch {
+          // No hay calificaciones o no se pudieron cargar
+        }
       }
     } catch {
       setContenido(null)
@@ -156,6 +170,30 @@ export default function ContenidoDetallePage() {
       toast.error('Error al actualizar Mi lista: ' + msg)
     }
   }, [isFavorite, id])
+
+  const handleRating = async (rating: number) => {
+    const perfil = getPerfilActivo()
+    if (!perfil) {
+      toast.error('Debes iniciar sesion para calificar')
+      return
+    }
+    setIsSendingRating(true)
+    try {
+      await calificacionesAPI.crear({
+        id_perfil: perfil.id,
+        id_contenido: id,
+        estrellas: rating,
+      })
+      setUserRating(rating)
+      toast.success(`Has calificado "${contenido.titulo}" con ${rating} estrellas`)
+      setIsRatingDialogOpen(false)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error desconocido'
+      toast.error('Error al guardar la calificacion: ' + msg)
+    } finally {
+      setIsSendingRating(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -206,12 +244,6 @@ export default function ContenidoDetallePage() {
     } finally {
       setIsSendingReport(false)
     }
-  }
-
-  const handleRating = (rating: number) => {
-    setUserRating(rating)
-    toast.success('Has calificado "' + contenido.titulo + '" con ' + rating + ' estrellas')
-    setIsRatingDialogOpen(false)
   }
 
   return (
@@ -320,7 +352,8 @@ export default function ContenidoDetallePage() {
                         <button
                           key={rating}
                           onClick={() => handleRating(rating)}
-                          className="p-2 hover:scale-110 transition-transform"
+                          disabled={isSendingRating}
+                          className="p-2 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Star
                             className={cn(
@@ -333,6 +366,12 @@ export default function ContenidoDetallePage() {
                         </button>
                       ))}
                     </div>
+                    {isSendingRating && (
+                      <p className="text-center text-sm text-muted-foreground mt-2">
+                        <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                        Guardando calificacion...
+                      </p>
+                    )}
                   </div>
                 </DialogContent>
               </Dialog>

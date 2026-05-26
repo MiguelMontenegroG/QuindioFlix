@@ -182,6 +182,10 @@ function mapBackendContenidoToFrontend(bc: any): Contenido {
   // Si bc.categoria o bc.nombre_categoria es un objeto, extraer el nombre
   const categoriaRaw = bc.nombre_categoria ?? bc.categoria
   const categoria = obtenerNombreCategoria(bc.id_categoria, categoriaRaw)
+  // Depuracion: ver que valor tiene poster_url
+  if (typeof window !== 'undefined') {
+    console.log('[DEBUG] mapBackendContenidoToFrontend:', bc.titulo, '| poster_url:', bc.poster_url, '| existe poster_url?', bc.poster_url ? 'SI' : 'NO');
+  }
   return {
     id: bc.id_contenido ?? bc.id,
     titulo: bc.titulo ?? bc.TITULO,
@@ -739,6 +743,23 @@ export const dbaAPI = {
     fetchAPI<{ columns: string[]; rows: Record<string, any>[]; total: number; mostrando: number }>(`/dba/query?limite=${limite}`, {
       method: 'POST',
       body: JSON.stringify({ query }),
+    }),
+
+  // ==================== NUEVOS ENDPOINTS DBA ====================
+
+  /** Detalle de tablespaces de reproducciones (TS_REPROD_2024 y TS_REPROD_2025) */
+  tablespacesReproducciones: () =>
+    fetchAPI<{ data: any[]; mensaje?: string }>('/dba/tablespaces-detalle'),
+
+  /** Detalle ampliado de vistas materializadas (con metodo_refresh, propietario, etc.) */
+  vistasMaterializadasDetalle: () =>
+    fetchAPI<any[]>('/dba/vistas-materializadas-detalle'),
+
+  /** Refrescar una vista materializada por nombre desde el body */
+  refrescarVistaPorNombre: (nombre: string) =>
+    fetchAPI<{ mensaje?: string; error?: string }>('/dba/vistas-materializadas/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ nombre }),
     }),
 }
 

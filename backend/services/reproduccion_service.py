@@ -199,13 +199,13 @@ def agregar_favorito(data: FavoritoCreate) -> Favorito:
         cursor.execute(
             f"""INSERT INTO {fq('FAVORITOS')} (id_perfil, id_contenido, fecha_agregado)
                VALUES (:1, :2, :3)""",
-            [data.id_perfil, data.id_contenido, now]
-        )
-        conn.commit()
-        cursor.close()
-        return Favorito(
-            id_perfil=data.id_perfil, id_contenido=data.id_contenido,
-            fecha_agregado=now
+            {
+                "p_id_perfil": data.id_perfil,
+                "p_id_contenido": data.id_contenido,
+                "p_estrellas": data.estrellas,
+                "p_resenia": data.resenia,
+                "p_fecha": now,
+            }
         )
     except oracledb.DatabaseError as e:
         conn.rollback()
@@ -264,13 +264,12 @@ def crear_calificacion(data: CalificacionCreate) -> Calificacion:
         now = datetime.now(timezone.utc)
         cursor.execute(
             f"""MERGE INTO {fq('CALIFICACIONES')} c
-               USING (SELECT :1 AS p, :2 AS c FROM DUAL) src
+               USING (SELECT :p_id_perfil AS p, :p_id_contenido AS c FROM DUAL) src
                ON (c.id_perfil = src.p AND c.id_contenido = src.c)
-               WHEN MATCHED THEN UPDATE SET estrellas = :3, resenia = :4, fecha_calificacion = :5
+               WHEN MATCHED THEN UPDATE SET estrellas = :p_estrellas, resenia = :p_resenia, fecha_calificacion = :p_fecha
                WHEN NOT MATCHED THEN INSERT (id_calificacion, id_perfil, id_contenido, estrellas, resenia, fecha_calificacion)
-                 VALUES (seq_calificaciones.NEXTVAL, :1, :2, :3, :4, :5)""",
-            [data.id_perfil, data.id_contenido,
-             data.estrellas, data.resenia, now]
+                 VALUES (seq_calificaciones.NEXTVAL, :p_id_perfil, :p_id_contenido, :p_estrellas, :p_resenia, :p_fecha)""",
+            {"p_id_perfil": data.id_perfil, "p_id_contenido": data.id_contenido, "p_estrellas": data.estrellas, "p_resenia": data.resenia, "p_fecha": now}
         )
         conn.commit()
         cursor.close()
